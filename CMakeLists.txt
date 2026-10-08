@@ -13,6 +13,7 @@ add_executable(equipment_controller
   src/main.cpp
   src/equipment_controller.cpp
   src/logger.cpp
+  src/ascii_protocol.cpp
 )
 
 target_include_directories(equipment_controller PRIVATE
