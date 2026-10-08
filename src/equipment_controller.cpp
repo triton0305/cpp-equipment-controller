@@ -147,6 +147,12 @@ void EquipmentController::checkInterlocks()
     return;
   }
 
+  if(sensor_state_.emergency_stop)
+  {
+    enterError(AlarmCode::EmergencyStop);
+    return;
+  }
+
   if (!sensor_state_.door_closed)
   {
     enterError(AlarmCode::DoorOpen);

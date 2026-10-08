@@ -241,6 +241,48 @@ int main()
     << " | buzzer=" << motor_device.buzzer_on
     << '\n';
 
-  
+  //=======================================================//
+  std::cout << "\n[TEST 7] Emergency stop during RUN\n";
+
+  EquipmentController estop_controller;
+
+  estop_controller.handleCommand(start_command);
+
+  for (int i = 0; i < 6; ++i)
+  {
+    estop_controller.update();
+  }
+
+  std::cout
+    << "Before fault"
+    << " | state=" << static_cast<int>(estop_controller.getState())
+    << " | step=" << static_cast<int>(estop_controller.getSequenceStep())
+    << " | emergency_stop="
+    << estop_controller.getSensorState().emergency_stop
+    << '\n';
+
+  SensorState estop_sensor;
+  estop_sensor.emergency_stop = true;
+
+  estop_controller.setSensorState(estop_sensor);
+  estop_controller.update();
+
+  const DeviceState& estop_device =
+    estop_controller.getDeviceState();
+
+  std::cout
+    << "After fault"
+    << " | state=" << static_cast<int>(estop_controller.getState())
+    << " | step=" << static_cast<int>(estop_controller.getSequenceStep())
+    << " | alarm=" << static_cast<int>(estop_controller.getAlarmCode())
+    << " | emergency_stop="
+    << estop_controller.getSensorState().emergency_stop
+    << " | pump=" << estop_device.pump_on
+    << " | heater=" << estop_device.heater_on
+    << " | run_led=" << estop_device.run_led
+    << " | error_led=" << estop_device.error_led
+    << " | buzzer=" << estop_device.buzzer_on
+    << '\n';
+
   return 0;
 }
