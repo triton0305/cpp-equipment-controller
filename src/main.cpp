@@ -484,5 +484,172 @@ int main()
 
   logging_controller.handleCommand(reset_logging_command);
 
+//=======================================================//
+
+  std::cout << "\n[TEST 13] STOP boundary conditions\n";
+
+  Command boundary_stop_command;
+  boundary_stop_command.type = CommandType::Stop;
+
+  // IDLE + STOP -> IDLE 유지
+  EquipmentController idle_stop_controller;
+  idle_stop_controller.handleCommand(boundary_stop_command);
+
+  std::cout
+    << "IDLE + STOP"
+    << " | state=" << static_cast<int>(idle_stop_controller.getState())
+    << " | step=" << static_cast<int>(idle_stop_controller.getSequenceStep())
+    << " | alarm=" << static_cast<int>(idle_stop_controller.getAlarmCode())
+    << '\n';
+
+  // READY + STOP -> IDLE 전환
+  EquipmentController ready_stop_controller;
+
+  ready_stop_controller.handleCommand(start_command);
+  ready_stop_controller.handleCommand(boundary_stop_command);
+
+  std::cout
+    << "READY + STOP"
+    << " | state=" << static_cast<int>(ready_stop_controller.getState())
+    << " | step=" << static_cast<int>(ready_stop_controller.getSequenceStep())
+    << " | alarm=" << static_cast<int>(ready_stop_controller.getAlarmCode())
+    << '\n';
+
+  // ERROR + STOP -> ERROR 유지
+  EquipmentController error_stop_controller;
+
+  error_stop_controller.handleCommand(start_command);
+
+  for (int i = 0; i < 6; ++i)
+  {
+    error_stop_controller.update();
+  }
+
+  SensorState error_stop_sensor;
+  error_stop_sensor.emergency_stop = true;
+
+  error_stop_controller.setSensorState(error_stop_sensor);
+  error_stop_controller.update();
+
+  error_stop_controller.handleCommand(boundary_stop_command);
+
+  const DeviceState& error_stop_device =
+    error_stop_controller.getDeviceState();
+
+  std::cout
+    << "ERROR + STOP"
+    << " | state=" << static_cast<int>(error_stop_controller.getState())
+    << " | step=" << static_cast<int>(error_stop_controller.getSequenceStep())
+    << " | alarm=" << static_cast<int>(error_stop_controller.getAlarmCode())
+    << " | pump=" << error_stop_device.pump_on
+    << " | heater=" << error_stop_device.heater_on
+    << " | run_led=" << error_stop_device.run_led
+    << " | error_led=" << error_stop_device.error_led
+    << " | buzzer=" << error_stop_device.buzzer_on
+    << '\n';
+
+//=======================================================//
+
+  std::cout << "\n[TEST 14] RESET boundary conditions\n";
+
+  Command boundary_reset_command;
+  boundary_reset_command.type = CommandType::Reset;
+
+  // RUN + RESET -> RUN 유지
+  EquipmentController run_reset_controller;
+
+  run_reset_controller.handleCommand(start_command);
+
+  for (int i = 0; i < 6; ++i)
+  {
+    run_reset_controller.update();
+  }
+
+  run_reset_controller.handleCommand(boundary_reset_command);
+
+  std::cout
+    << "RUN + RESET"
+    << " | state=" << static_cast<int>(run_reset_controller.getState())
+    << " | step=" << static_cast<int>(run_reset_controller.getSequenceStep())
+    << " | alarm=" << static_cast<int>(run_reset_controller.getAlarmCode())
+    << '\n';
+
+  // 정상 RESET 직후 update() -> IDLE 유지
+  EquipmentController reset_update_controller;
+
+  reset_update_controller.handleCommand(start_command);
+
+  for (int i = 0; i < 6; ++i)
+  {
+    reset_update_controller.update();
+  }
+
+  SensorState reset_update_sensor;
+  reset_update_sensor.emergency_stop = true;
+
+  reset_update_controller.setSensorState(reset_update_sensor);
+  reset_update_controller.update();
+
+  reset_update_sensor.emergency_stop = false;
+  reset_update_controller.setSensorState(reset_update_sensor);
+
+  reset_update_controller.handleCommand(boundary_reset_command);
+  reset_update_controller.update();
+
+  const DeviceState& reset_update_device =
+    reset_update_controller.getDeviceState();
+
+  std::cout
+    << "RESET + update"
+    << " | state=" << static_cast<int>(reset_update_controller.getState())
+    << " | step=" << static_cast<int>(reset_update_controller.getSequenceStep())
+    << " | alarm=" << static_cast<int>(reset_update_controller.getAlarmCode())
+    << " | pump=" << reset_update_device.pump_on
+    << " | heater=" << reset_update_device.heater_on
+    << " | run_led=" << reset_update_device.run_led
+    << " | error_led=" << reset_update_device.error_led
+    << " | buzzer=" << reset_update_device.buzzer_on
+    << '\n';
+
+//=======================================================//
+
+  std::cout << "\n[TEST 15] Repeated fault stability\n";
+
+  Logger boundary_logger("equipment_controller.log");
+
+  EquipmentController repeated_fault_controller;
+  repeated_fault_controller.setLogger(&boundary_logger);
+
+  repeated_fault_controller.handleCommand(start_command);
+
+  for (int i = 0; i < 6; ++i)
+  {
+    repeated_fault_controller.update();
+  }
+
+  SensorState repeated_fault_sensor;
+  repeated_fault_sensor.emergency_stop = true;
+
+  repeated_fault_controller.setSensorState(repeated_fault_sensor);
+
+  repeated_fault_controller.update();
+  repeated_fault_controller.update();
+  repeated_fault_controller.update();
+
+  const DeviceState& repeated_fault_device =
+    repeated_fault_controller.getDeviceState();
+
+  std::cout
+    << "Repeated fault"
+    << " | state=" << static_cast<int>(repeated_fault_controller.getState())
+    << " | step=" << static_cast<int>(repeated_fault_controller.getSequenceStep())
+    << " | alarm=" << static_cast<int>(repeated_fault_controller.getAlarmCode())
+    << " | pump=" << repeated_fault_device.pump_on
+    << " | heater=" << repeated_fault_device.heater_on
+    << " | run_led=" << repeated_fault_device.run_led
+    << " | error_led=" << repeated_fault_device.error_led
+    << " | buzzer=" << repeated_fault_device.buzzer_on
+    << '\n';
+
   return 0;
 }
