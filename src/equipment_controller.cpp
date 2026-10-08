@@ -153,6 +153,12 @@ void EquipmentController::checkInterlocks()
     return;
   }
 
+  if(sensor_state_.motor_fault)
+  {
+    enterError(AlarmCode::MotorFault);
+    return;
+  }
+
   if (sensor_state_.temperature > kMaximumOperatingTemperature)
   {
     enterError(AlarmCode::OverTemperature);

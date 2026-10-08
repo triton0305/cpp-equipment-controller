@@ -198,5 +198,49 @@ int main()
     << " | error_led=" << temperature_device_after.error_led
     << " | buzzer=" << temperature_device_after.buzzer_on
     << '\n';
+
+//=======================================================//
+
+  std::cout << "\n[TEST 6] Motor fault during RUN\n";
+
+  EquipmentController motor_controller;
+
+  motor_controller.handleCommand(start_command);
+
+  for (int i = 0; i < 6; ++i)
+  {
+    motor_controller.update();
+  }
+
+  std::cout
+    << "Before fault"
+    << " | state=" << static_cast<int>(motor_controller.getState())
+    << " | step=" << static_cast<int>(motor_controller.getSequenceStep())
+    << " | motor_fault=" << motor_controller.getSensorState().motor_fault
+    << '\n';
+
+  SensorState motor_sensor;
+  motor_sensor.motor_fault = true;
+
+  motor_controller.setSensorState(motor_sensor);
+  motor_controller.update();
+
+  const DeviceState& motor_device =
+    motor_controller.getDeviceState();
+
+  std::cout
+    << "After fault"
+    << " | state=" << static_cast<int>(motor_controller.getState())
+    << " | step=" << static_cast<int>(motor_controller.getSequenceStep())
+    << " | alarm=" << static_cast<int>(motor_controller.getAlarmCode())
+    << " | motor_fault=" << motor_controller.getSensorState().motor_fault
+    << " | pump=" << motor_device.pump_on
+    << " | heater=" << motor_device.heater_on
+    << " | run_led=" << motor_device.run_led
+    << " | error_led=" << motor_device.error_led
+    << " | buzzer=" << motor_device.buzzer_on
+    << '\n';
+
+  
   return 0;
 }

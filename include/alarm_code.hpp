@@ -6,7 +6,8 @@ enum class AlarmCode
   None,
   DoorOpen,
   PressureFault,
-  OverTemperature
+  OverTemperature,
+  MotorFault
 };
 
 #endif
