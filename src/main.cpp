@@ -1088,5 +1088,122 @@ int main()
     close(disconnect_master);
   }
 
+  //=======================================================//
+
+  std::cout << "\n[TEST 26] UART reconnect after disconnect\n";
+
+  SerialTransport reconnect_serial;
+
+  auto create_pty = [](int& master, std::string& slave) -> bool
+  {
+    master = posix_openpt(O_RDWR | O_NOCTTY);
+
+    if (master < 0)
+    {
+      return false;
+    }
+
+    if (grantpt(master) != 0 || unlockpt(master) != 0)
+    {
+      close(master);
+      master = -1;
+      return false;
+    }
+
+    char* name = ptsname(master);
+
+    if (name == nullptr)
+    {
+      close(master);
+      master = -1;
+      return false;
+    }
+
+    slave = name;
+    return true;
+  };
+
+  int first_master = -1;
+  std::string first_slave;
+
+  if (create_pty(first_master, first_slave) &&
+      reconnect_serial.openPort(first_slave))
+  {
+    std::cout
+      << "First connection | isOpen="
+      << reconnect_serial.isOpen()
+      << '\n';
+
+    close(first_master);
+
+    std::string received;
+    const bool read_ok =
+      reconnect_serial.readAvailable(received);
+
+    std::cout
+      << "After disconnect | read_ok=" << read_ok
+      << " | isOpen=" << reconnect_serial.isOpen()
+      << '\n';
+
+    int second_master = -1;
+    std::string second_slave;
+
+    if (create_pty(second_master, second_slave))
+    {
+      const bool reopened =
+        reconnect_serial.openPort(second_slave);
+
+      std::cout
+        << "Reconnect | opened=" << reopened
+        << " | isOpen=" << reconnect_serial.isOpen()
+        << '\n';
+
+      if (reopened)
+      {
+        const std::string message = "TEMP:31.5\n";
+
+        const ssize_t written = write(
+          second_master,
+          message.data(),
+          message.size()
+        );
+
+        std::vector<std::string> lines;
+
+        const bool rx_ok =
+          reconnect_serial.readLines(lines);
+
+        std::cout
+          << "After reconnect"
+          << " | injected=" << written
+          << " | rx_ok=" << rx_ok
+          << " | complete lines=" << lines.size();
+
+        if (!lines.empty())
+        {
+          std::cout << " | line=" << lines.front();
+        }
+
+        std::cout << '\n';
+      }
+
+      reconnect_serial.closePort();
+      close(second_master);
+    }
+    else
+    {
+      std::cout << "Second PTY creation failed\n";
+    }
+  }
+  else
+  {
+    std::cout << "First PTY connection failed\n";
+
+    if (first_master >= 0)
+    {
+      close(first_master);
+    }
+  }
+
   return 0;
 }

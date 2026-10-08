@@ -170,13 +170,41 @@ bool SerialTransport::readAvailable(std::string& data)
 
   while (true)
   {
-    const ssize_t result = ::read(
-      fd_, buffer, sizeof(buffer)
-    );
+    pollfd pfd{};
+    pfd.fd = fd_;
+    pfd.events = POLLIN;
+
+    int poll_result;
+
+    do
+    {
+      poll_result = ::poll(&pfd, 1, 0);
+    }
+    while (poll_result < 0 && errno == EINTR);
+
+    if (poll_result < 0)
+    {
+      closePort();
+      return false;
+    }
+
+    if (poll_result > 0 &&
+        (pfd.revents & (POLLHUP | POLLERR | POLLNVAL)))
+    {
+      closePort();
+      return false;
+    }
+
+    const ssize_t result =
+      ::read(fd_, buffer, sizeof(buffer));
 
     if (result > 0)
     {
-      data.append(buffer, static_cast<std::size_t>(result));
+      data.append(
+        buffer,
+        static_cast<std::size_t>(result)
+      );
+
       continue;
     }
 
@@ -191,12 +219,12 @@ bool SerialTransport::readAvailable(std::string& data)
       return true;
     }
 
-    // Nonblocking TTY에서 0은 현재 데이터 없음일 수 있음.
     if (result == 0)
     {
       return true;
     }
 
+    closePort();
     return false;
   }
 }
