@@ -381,5 +381,50 @@ int main()
     << " | buzzer=" << reset_device.buzzer_on
     << '\n';
 
+//=======================================================//
+
+  std::cout << "\n[TEST 10] STOP during RUN\n";
+
+  EquipmentController stop_controller;
+
+  stop_controller.handleCommand(start_command);
+
+  for (int i = 0; i < 6; ++i)
+  {
+    stop_controller.update();
+  }
+
+  const DeviceState& stop_before =
+    stop_controller.getDeviceState();
+
+  std::cout
+    << "Before STOP"
+    << " | state=" << static_cast<int>(stop_controller.getState())
+    << " | step=" << static_cast<int>(stop_controller.getSequenceStep())
+    << " | pump=" << stop_before.pump_on
+    << " | heater=" << stop_before.heater_on
+    << '\n';
+
+  Command stop_command;
+  stop_command.type = CommandType::Stop;
+
+  stop_controller.handleCommand(stop_command);
+
+  const DeviceState& stop_after =
+    stop_controller.getDeviceState();
+
+  std::cout
+    << "After STOP"
+    << " | state=" << static_cast<int>(stop_controller.getState())
+    << " | step=" << static_cast<int>(stop_controller.getSequenceStep())
+    << " | alarm=" << static_cast<int>(stop_controller.getAlarmCode())
+    << " | pump=" << stop_after.pump_on
+    << " | heater=" << stop_after.heater_on
+    << " | valve=" << stop_after.valve_open
+    << " | run_led=" << stop_after.run_led
+    << " | error_led=" << stop_after.error_led
+    << " | buzzer=" << stop_after.buzzer_on
+    << '\n';
+
   return 0;
 }

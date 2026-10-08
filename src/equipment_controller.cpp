@@ -21,6 +21,10 @@ void EquipmentController::handleCommand(const Command& command)
       handleStart();
       break;
 
+    case CommandType::Stop:
+      handleStop();
+      break;
+
     case CommandType::Reset:
       handleReset();
       break;
@@ -86,6 +90,25 @@ void EquipmentController::handleStart()
 
   state_ = EquipmentState::Ready;
   sequence_step_ = SequenceStep::CheckDoor;
+}
+
+void EquipmentController::handleStop()
+{
+  if (state_ != EquipmentState::Ready &&
+      state_ != EquipmentState::Run)
+  {
+    return;
+  }
+
+  sequence_step_ = SequenceStep::None;
+
+  device_state_.pump_on = false;
+  device_state_.heater_on = false;
+  device_state_.valve_open = false;
+
+  device_state_.run_led = false;
+
+  state_ = EquipmentState::Idle;
 }
 
 void EquipmentController::handleReset()

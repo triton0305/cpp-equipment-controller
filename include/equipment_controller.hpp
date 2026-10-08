@@ -26,6 +26,7 @@ public:
 
 private:
   void handleStart();
+  void handleStop();
   void handleReset();
   void advanceSequence();
   void checkInterlocks();
