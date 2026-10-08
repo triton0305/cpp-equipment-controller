@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="300" viewBox="0 0 1280 300" role="img" aria-labelledby="title desc">
+  <title id="title">C++ Equipment Controller</title>
+  <desc id="desc">Linux C++ control logic, STM32 device I/O, UART integration and physical E2E verification.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#0d1b2a"/><stop offset="1" stop-color="#123b43"/></linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse"><path d="M32 0H0V32" fill="none" stroke="#ffffff" stroke-opacity=".045"/></pattern>
+  </defs>
+  <rect width="1280" height="300" rx="18" fill="url(#bg)"/>
+  <rect width="1280" height="300" rx="18" fill="url(#grid)"/>
+  <rect x="48" y="46" width="5" height="202" rx="2.5" fill="#54d6bd"/>
+  <g font-family="Arial, Helvetica, sans-serif">
+    <text x="76" y="72" fill="#8fe2d2" font-size="14" font-weight="700" letter-spacing="3">EMBEDDED CONTROL / DEVICE INTEGRATION</text>
+    <text x="76" y="129" fill="#f4f8fc" font-size="44" font-weight="700">C++ Equipment Controller</text>
+    <text x="78" y="165" fill="#b7cdd5" font-size="19">State Machine · Sequence · Interlock · UART</text>
+    <g font-size="14" font-weight="700">
+      <rect x="78" y="198" width="178" height="34" rx="7" fill="#213d4c" stroke="#385664"/>
+      <text x="167" y="220" text-anchor="middle" fill="#dce8ed">Linux / WSL · C++17</text>
+      <rect x="268" y="198" width="184" height="34" rx="7" fill="#213d4c" stroke="#385664"/>
+      <text x="360" y="220" text-anchor="middle" fill="#dce8ed">STM32 · NUCLEO-F411RE</text>
+      <rect x="464" y="198" width="151" height="34" rx="7" fill="#184e45" stroke="#397968"/>
+      <text x="539.5" y="220" text-anchor="middle" fill="#99ead0">Physical E2E</text>
+    </g>
+    <g transform="translate(895 73)">
+      <rect width="306" height="153" rx="14" fill="#0b202b" fill-opacity=".7" stroke="#355967"/>
+      <circle cx="26" cy="25" r="5" fill="#54d6bd"/>
+      <text x="42" y="30" fill="#a8c3ce" font-size="12" font-weight="700" letter-spacing="1.8">CONTROL LOOP</text>
+      <text x="26" y="65" fill="#f4f8fc" font-size="18" font-weight="700">SENSE → DECIDE → ACT</text>
+      <path d="M26 84H280" stroke="#355967"/>
+      <text x="26" y="111" fill="#a8c3ce" font-size="14">Door / E-Stop / ADC</text>
+      <text x="26" y="135" fill="#8fe2d2" font-size="14">GPIO / LED / Buzzer</text>
+    </g>
+  </g>
+</svg>
