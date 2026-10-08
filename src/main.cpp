@@ -329,5 +329,57 @@ int main()
     << " | buzzer=" << communication_device.buzzer_on
     << '\n';
 
+//=======================================================//
+
+  std::cout << "\n[TEST 9] RESET / Recovery\n";
+
+  EquipmentController reset_controller;
+
+  reset_controller.handleCommand(start_command);
+
+  for (int i = 0; i < 6; ++i)
+  {
+    reset_controller.update();
+  }
+
+  SensorState reset_sensor;
+  reset_sensor.emergency_stop = true;
+
+  reset_controller.setSensorState(reset_sensor);
+  reset_controller.update();
+
+  Command reset_command;
+  reset_command.type = CommandType::Reset;
+
+  // Fault가 유지된 상태에서 RESET 거부
+  reset_controller.handleCommand(reset_command);
+
+  std::cout
+    << "RESET with fault"
+    << " | state=" << static_cast<int>(reset_controller.getState())
+    << " | alarm=" << static_cast<int>(reset_controller.getAlarmCode())
+    << '\n';
+
+  // Fault 해제 후 RESET 허용
+  reset_sensor.emergency_stop = false;
+  reset_controller.setSensorState(reset_sensor);
+
+  reset_controller.handleCommand(reset_command);
+
+  const DeviceState& reset_device =
+    reset_controller.getDeviceState();
+
+  std::cout
+    << "RESET after recovery"
+    << " | state=" << static_cast<int>(reset_controller.getState())
+    << " | step=" << static_cast<int>(reset_controller.getSequenceStep())
+    << " | alarm=" << static_cast<int>(reset_controller.getAlarmCode())
+    << " | pump=" << reset_device.pump_on
+    << " | heater=" << reset_device.heater_on
+    << " | run_led=" << reset_device.run_led
+    << " | error_led=" << reset_device.error_led
+    << " | buzzer=" << reset_device.buzzer_on
+    << '\n';
+
   return 0;
 }

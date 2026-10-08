@@ -26,6 +26,7 @@ public:
 
 private:
   void handleStart();
+  void handleReset();
   void advanceSequence();
   void checkInterlocks();
   void enterError(AlarmCode alarm_code);

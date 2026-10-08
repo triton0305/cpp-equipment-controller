@@ -21,6 +21,10 @@ void EquipmentController::handleCommand(const Command& command)
       handleStart();
       break;
 
+    case CommandType::Reset:
+      handleReset();
+      break;
+
     default:
       break;
   }
@@ -82,6 +86,37 @@ void EquipmentController::handleStart()
 
   state_ = EquipmentState::Ready;
   sequence_step_ = SequenceStep::CheckDoor;
+}
+
+void EquipmentController::handleReset()
+{
+  if (state_ != EquipmentState::Error)
+  {
+    return;
+  }
+
+  if (!sensor_state_.door_closed ||
+      sensor_state_.emergency_stop ||
+      sensor_state_.motor_fault ||
+      !sensor_state_.communication_ok ||
+      sensor_state_.temperature > kMaximumOperatingTemperature ||
+      sensor_state_.pressure < kMinimumOperatingPressure)
+  {
+    return;
+  }
+
+  alarm_code_ = AlarmCode::None;
+  sequence_step_ = SequenceStep::None;
+
+  device_state_.pump_on = false;
+  device_state_.heater_on = false;
+  device_state_.valve_open = false;
+
+  device_state_.run_led = false;
+  device_state_.error_led = false;
+  device_state_.buzzer_on = false;
+
+  state_ = EquipmentState::Idle;
 }
 
 void EquipmentController::advanceSequence()
