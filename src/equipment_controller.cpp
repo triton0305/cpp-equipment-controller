@@ -3,6 +3,7 @@
 namespace
 {
   constexpr int kMinimumOperatingPressure = 50;
+  constexpr double kMaximumOperatingTemperature = 80.0;
 }
 
 EquipmentController::EquipmentController()
@@ -152,11 +153,17 @@ void EquipmentController::checkInterlocks()
     return;
   }
 
-  if(device_state_.pump_on && sensor_state_.pressure < kMinimumOperatingPressure)
+  if (sensor_state_.temperature > kMaximumOperatingTemperature)
+  {
+    enterError(AlarmCode::OverTemperature);
+    return;
+  }
+
+  if (device_state_.pump_on &&
+      sensor_state_.pressure < kMinimumOperatingPressure)
   {
     enterError(AlarmCode::PressureFault);
   }
-
 }
 
 void EquipmentController::enterError(AlarmCode alarm_code)

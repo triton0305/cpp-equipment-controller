@@ -12,6 +12,8 @@ int main()
 
   std::cout << "C++ Equipment Controller\n";
 
+//=======================================================//
+
   std::cout << "\n[TEST 1] START with door open\n";
 
   EquipmentController blocked_controller;
@@ -31,6 +33,8 @@ int main()
     << "Sequence step: "
     << static_cast<int>(blocked_controller.getSequenceStep())
     << '\n';
+
+//=======================================================//
 
   std::cout << "\n[TEST 2] Normal sequence\n";
 
@@ -63,6 +67,8 @@ int main()
       << " | run_led=" << device.run_led
       << '\n';
   }
+
+//=======================================================//
 
   std::cout << "\n[TEST 3] Door open during RUN\n";
 
@@ -102,7 +108,9 @@ int main()
     << " | buzzer=" << fault_device.buzzer_on
     << '\n';
 
-      std::cout << "\n[TEST 4] Pressure fault\n";
+//=======================================================//
+  
+  std::cout << "\n[TEST 4] Pressure fault\n";
 
   EquipmentController pressure_controller;
 
@@ -144,5 +152,51 @@ int main()
     << " | buzzer=" << pressure_device_after.buzzer_on
     << '\n';
 
+//=======================================================//
+
+  std::cout << "\n[TEST 5] Over temperature\n";
+
+  EquipmentController temperature_controller;
+
+  temperature_controller.handleCommand(start_command);
+
+  for (int i = 0; i < 4; ++i)
+  {
+    temperature_controller.update();
+  }
+
+  const DeviceState& temperature_device_before =
+    temperature_controller.getDeviceState();
+
+  std::cout
+    << "Before fault"
+    << " | state=" << static_cast<int>(temperature_controller.getState())
+    << " | step=" << static_cast<int>(temperature_controller.getSequenceStep())
+    << " | temperature=" << temperature_controller.getSensorState().temperature
+    << " | pump=" << temperature_device_before.pump_on
+    << " | heater=" << temperature_device_before.heater_on
+    << '\n';
+
+  SensorState temperature_sensor;
+  temperature_sensor.temperature = 90.0;
+
+  temperature_controller.setSensorState(temperature_sensor);
+  temperature_controller.update();
+
+  const DeviceState& temperature_device_after =
+    temperature_controller.getDeviceState();
+
+  std::cout
+    << "After fault"
+    << " | state=" << static_cast<int>(temperature_controller.getState())
+    << " | step=" << static_cast<int>(temperature_controller.getSequenceStep())
+    << " | alarm=" << static_cast<int>(temperature_controller.getAlarmCode())
+    << " | temperature=" << temperature_controller.getSensorState().temperature
+    << " | pump=" << temperature_device_after.pump_on
+    << " | heater=" << temperature_device_after.heater_on
+    << " | run_led=" << temperature_device_after.run_led
+    << " | error_led=" << temperature_device_after.error_led
+    << " | buzzer=" << temperature_device_after.buzzer_on
+    << '\n';
   return 0;
 }
