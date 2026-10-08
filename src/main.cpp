@@ -102,5 +102,47 @@ int main()
     << " | buzzer=" << fault_device.buzzer_on
     << '\n';
 
+      std::cout << "\n[TEST 4] Pressure fault\n";
+
+  EquipmentController pressure_controller;
+
+  pressure_controller.handleCommand(start_command);
+
+  pressure_controller.update();
+  pressure_controller.update();
+
+  const DeviceState& pressure_device_before =
+    pressure_controller.getDeviceState();
+
+  std::cout
+    << "Before fault"
+    << " | state=" << static_cast<int>(pressure_controller.getState())
+    << " | step=" << static_cast<int>(pressure_controller.getSequenceStep())
+    << " | pressure=" << pressure_controller.getSensorState().pressure
+    << " | pump=" << pressure_device_before.pump_on
+    << '\n';
+
+  SensorState pressure_sensor;
+  pressure_sensor.pressure = 40;
+
+  pressure_controller.setSensorState(pressure_sensor);
+  pressure_controller.update();
+
+  const DeviceState& pressure_device_after =
+    pressure_controller.getDeviceState();
+
+  std::cout
+    << "After fault"
+    << " | state=" << static_cast<int>(pressure_controller.getState())
+    << " | step=" << static_cast<int>(pressure_controller.getSequenceStep())
+    << " | alarm=" << static_cast<int>(pressure_controller.getAlarmCode())
+    << " | pressure=" << pressure_controller.getSensorState().pressure
+    << " | pump=" << pressure_device_after.pump_on
+    << " | heater=" << pressure_device_after.heater_on
+    << " | run_led=" << pressure_device_after.run_led
+    << " | error_led=" << pressure_device_after.error_led
+    << " | buzzer=" << pressure_device_after.buzzer_on
+    << '\n';
+
   return 0;
 }

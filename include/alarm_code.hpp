@@ -4,7 +4,8 @@
 enum class AlarmCode
 {
   None,
-  DoorOpen
+  DoorOpen,
+  PressureFault
 };
 
 #endif

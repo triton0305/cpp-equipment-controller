@@ -1,5 +1,10 @@
 #include "equipment_controller.hpp"
 
+namespace
+{
+  constexpr int kMinimumOperatingPressure = 50;
+}
+
 EquipmentController::EquipmentController()
   : state_(EquipmentState::Idle),
     sequence_step_(SequenceStep::None),
@@ -144,7 +149,14 @@ void EquipmentController::checkInterlocks()
   if (!sensor_state_.door_closed)
   {
     enterError(AlarmCode::DoorOpen);
+    return;
   }
+
+  if(device_state_.pump_on && sensor_state_.pressure < kMinimumOperatingPressure)
+  {
+    enterError(AlarmCode::PressureFault);
+  }
+
 }
 
 void EquipmentController::enterError(AlarmCode alarm_code)
