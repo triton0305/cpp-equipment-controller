@@ -2,7 +2,8 @@
 
 EquipmentController::EquipmentController()
   : state_(EquipmentState::Idle),
-    sequence_step_(SequenceStep::None)
+    sequence_step_(SequenceStep::None),
+    alarm_code_(AlarmCode::None)
 {
 }
 
@@ -21,6 +22,13 @@ void EquipmentController::handleCommand(const Command& command)
 
 void EquipmentController::update()
 {
+  checkInterlocks();
+
+  if (state_ == EquipmentState::Error)
+  {
+    return;
+  }
+
   advanceSequence();
 }
 
@@ -37,6 +45,11 @@ EquipmentState EquipmentController::getState() const
 SequenceStep EquipmentController::getSequenceStep() const
 {
   return sequence_step_;
+}
+
+AlarmCode EquipmentController::getAlarmCode() const
+{
+  return alarm_code_;
 }
 
 const SensorState& EquipmentController::getSensorState() const
@@ -118,4 +131,35 @@ void EquipmentController::advanceSequence()
       sequence_step_ = SequenceStep::None;
       break;
   }
+}
+
+void EquipmentController::checkInterlocks()
+{
+  if (state_ != EquipmentState::Ready &&
+      state_ != EquipmentState::Run)
+  {
+    return;
+  }
+
+  if (!sensor_state_.door_closed)
+  {
+    enterError(AlarmCode::DoorOpen);
+  }
+}
+
+void EquipmentController::enterError(AlarmCode alarm_code)
+{
+  alarm_code_ = alarm_code;
+
+  sequence_step_ = SequenceStep::None;
+
+  device_state_.pump_on = false;
+  device_state_.heater_on = false;
+  device_state_.valve_open = false;
+
+  device_state_.run_led = false;
+  device_state_.error_led = true;
+  device_state_.buzzer_on = true;
+
+  state_ = EquipmentState::Error;
 }
