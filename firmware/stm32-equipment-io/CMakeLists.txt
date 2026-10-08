@@ -47,6 +47,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
     App/Src/device_io.c
     App/Src/pressure_adc.c
+    App/Src/io_protocol.c
 )
 
 # Add include paths
