@@ -1,4 +1,7 @@
 #include "equipment_controller.hpp"
+#include "logger.hpp"
+
+#include <string>
 
 namespace
 {
@@ -46,6 +49,11 @@ void EquipmentController::update()
   advanceSequence();
 }
 
+void EquipmentController::setLogger(Logger* logger)
+{
+  logger_ = logger;
+}
+
 void EquipmentController::setSensorState(const SensorState& sensor_state)
 {
   sensor_state_ = sensor_state;
@@ -90,6 +98,11 @@ void EquipmentController::handleStart()
 
   state_ = EquipmentState::Ready;
   sequence_step_ = SequenceStep::CheckDoor;
+
+  if (logger_)
+  {
+    logger_->log(LogLevel::Info, "START accepted: IDLE -> READY");
+  }
 }
 
 void EquipmentController::handleStop()
@@ -109,6 +122,11 @@ void EquipmentController::handleStop()
   device_state_.run_led = false;
 
   state_ = EquipmentState::Idle;
+
+  if (logger_)
+  {
+    logger_->log(LogLevel::Info, "STOP accepted: -> IDLE");
+  }
 }
 
 void EquipmentController::handleReset()
@@ -140,6 +158,11 @@ void EquipmentController::handleReset()
   device_state_.buzzer_on = false;
 
   state_ = EquipmentState::Idle;
+
+  if(logger_)
+  {
+    logger_->log(LogLevel::Info, "RESET accepted: ERROR -> IDLE");
+  }
 }
 
 void EquipmentController::advanceSequence()
@@ -257,4 +280,12 @@ void EquipmentController::enterError(AlarmCode alarm_code)
   device_state_.buzzer_on = true;
 
   state_ = EquipmentState::Error;
+
+  if (logger_)
+  {
+    logger_->log(
+      LogLevel::Error,
+      "FAULT detected: alarm=" + std::to_string(static_cast<int>(alarm_code))
+    );
+  }
 }

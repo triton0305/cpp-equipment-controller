@@ -7,6 +7,8 @@
 #include "equipment_state.hpp"
 #include "sensor_state.hpp"
 
+class Logger;
+
 class EquipmentController
 {
 public:
@@ -16,6 +18,7 @@ public:
   void update();
 
   void setSensorState(const SensorState& sensor_state);
+  void setLogger(Logger* logger);
 
   EquipmentState getState() const;
   SequenceStep getSequenceStep() const;
@@ -38,6 +41,8 @@ private:
 
   SensorState sensor_state_;
   DeviceState device_state_;
+
+  Logger* logger_ = nullptr;
 };
 
 #endif

@@ -4,6 +4,7 @@
 #include "command.hpp"
 #include "equipment_controller.hpp"
 #include "sensor_state.hpp"
+#include "logger.hpp"
 
 int main()
 {
@@ -425,6 +426,63 @@ int main()
     << " | error_led=" << stop_after.error_led
     << " | buzzer=" << stop_after.buzzer_on
     << '\n';
+
+//=======================================================//
+
+  std::cout << "\n[TEST 11] Logger\n";
+
+  Logger logger("equipment_controller.log");
+
+  logger.log(LogLevel::Info, "Logger initialized");
+  logger.log(LogLevel::Warning, "Warning test");
+  logger.log(LogLevel::Error, "Error test");
+
+//=======================================================//
+
+  std::cout << "\n[TEST 12] Controller Event Logging\n";
+
+  EquipmentController logging_controller;
+
+  logging_controller.setLogger(&logger);
+
+  // START 이벤트
+  logging_controller.handleCommand(start_command);
+
+  // RUN 진입
+  for (int i = 0; i < 6; ++i)
+  {
+    logging_controller.update();
+  }
+
+  // STOP 이벤트
+  Command stop_logging_command;
+  stop_logging_command.type = CommandType::Stop;
+
+  logging_controller.handleCommand(stop_logging_command);
+
+  // 다시 START
+  logging_controller.handleCommand(start_command);
+
+  for (int i = 0; i < 6; ++i)
+  {
+    logging_controller.update();
+  }
+
+  // Emergency Stop 발생
+  SensorState logging_sensor;
+  logging_sensor.emergency_stop = true;
+
+  logging_controller.setSensorState(logging_sensor);
+  logging_controller.update();
+
+  // Fault 해제 후 RESET
+  logging_sensor.emergency_stop = false;
+  logging_controller.setSensorState(logging_sensor);
+
+  Command reset_logging_command;
+  reset_logging_command.type = CommandType::Reset;
+
+  logging_controller.handleCommand(reset_logging_command);
 
   return 0;
 }
