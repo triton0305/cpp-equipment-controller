@@ -153,6 +153,12 @@ void EquipmentController::checkInterlocks()
     return;
   }
 
+  if(!sensor_state_.communication_ok)
+  {
+    enterError(AlarmCode::CommunicationFault);
+    return;
+  }
+
   if (!sensor_state_.door_closed)
   {
     enterError(AlarmCode::DoorOpen);

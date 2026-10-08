@@ -241,7 +241,8 @@ int main()
     << " | buzzer=" << motor_device.buzzer_on
     << '\n';
 
-  //=======================================================//
+//=======================================================//
+
   std::cout << "\n[TEST 7] Emergency stop during RUN\n";
 
   EquipmentController estop_controller;
@@ -282,6 +283,50 @@ int main()
     << " | run_led=" << estop_device.run_led
     << " | error_led=" << estop_device.error_led
     << " | buzzer=" << estop_device.buzzer_on
+    << '\n';
+
+//=======================================================//
+
+  std::cout << "\n[TEST 8] Communication fault during RUN\n";
+
+  EquipmentController communication_controller;
+
+  communication_controller.handleCommand(start_command);
+
+  for (int i = 0; i < 6; ++i)
+  {
+    communication_controller.update();
+  }
+
+  std::cout
+    << "Before fault"
+    << " | state=" << static_cast<int>(communication_controller.getState())
+    << " | step=" << static_cast<int>(communication_controller.getSequenceStep())
+    << " | communication_ok="
+    << communication_controller.getSensorState().communication_ok
+    << '\n';
+
+  SensorState communication_sensor;
+  communication_sensor.communication_ok = false;
+
+  communication_controller.setSensorState(communication_sensor);
+  communication_controller.update();
+
+  const DeviceState& communication_device =
+    communication_controller.getDeviceState();
+
+  std::cout
+    << "After fault"
+    << " | state=" << static_cast<int>(communication_controller.getState())
+    << " | step=" << static_cast<int>(communication_controller.getSequenceStep())
+    << " | alarm=" << static_cast<int>(communication_controller.getAlarmCode())
+    << " | communication_ok="
+    << communication_controller.getSensorState().communication_ok
+    << " | pump=" << communication_device.pump_on
+    << " | heater=" << communication_device.heater_on
+    << " | run_led=" << communication_device.run_led
+    << " | error_led=" << communication_device.error_led
+    << " | buzzer=" << communication_device.buzzer_on
     << '\n';
 
   return 0;

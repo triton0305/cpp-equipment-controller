@@ -8,7 +8,8 @@ enum class AlarmCode
   PressureFault,
   OverTemperature,
   MotorFault,
-  EmergencyStop
+  EmergencyStop,
+  CommunicationFault
 };
 
 #endif
