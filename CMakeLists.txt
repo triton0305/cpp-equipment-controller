@@ -14,6 +14,7 @@ add_executable(equipment_controller
   src/equipment_controller.cpp
   src/logger.cpp
   src/ascii_protocol.cpp
+  src/serial_transport.cpp
 )
 
 target_include_directories(equipment_controller PRIVATE
