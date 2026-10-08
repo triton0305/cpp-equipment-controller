@@ -19,6 +19,9 @@ void DeviceIo_SetHeater(bool on);
 void DeviceIo_SetBuzzer(bool on);
 void DeviceIo_SetStateLed(DeviceStateLed state);
 
+/* Direct Linux RUN_LED / ERROR_LED outputs: green / red; blue off. */
+void DeviceIo_SetIndicators(bool run, bool error);
+
 void DeviceIo_SetSafeState(void);
 
 #endif

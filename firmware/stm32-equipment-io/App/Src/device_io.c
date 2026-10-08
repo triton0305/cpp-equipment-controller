@@ -120,3 +120,10 @@ void DeviceIo_SetSafeState(void)
     GPIO_PIN_RESET
   );
 }
+
+void DeviceIo_SetIndicators(bool run, bool error)
+{
+  HAL_GPIO_WritePin(STATE_R_GPIO_Port, STATE_R_Pin, error ? GPIO_PIN_SET : GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(STATE_G_GPIO_Port, STATE_G_Pin, run ? GPIO_PIN_SET : GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(STATE_B_GPIO_Port, STATE_B_Pin, GPIO_PIN_RESET);
+}

@@ -48,6 +48,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Src/device_io.c
     App/Src/pressure_adc.c
     App/Src/io_protocol.c
+    App/Src/uart_io.c
+    App/Src/io_runtime.c
 )
 
 # Add include paths

@@ -48,3 +48,13 @@ target_include_directories(stm32_io_protocol PUBLIC ${FIRMWARE_APP}/Inc)
 add_executable(test_io_protocol firmware/test_io_protocol.cpp)
 target_link_libraries(test_io_protocol PRIVATE stm32_io_protocol equipment_protocol)
 add_test(NAME STM32_PROTOCOL_CONTRACT COMMAND test_io_protocol)
+
+add_executable(test_io_runtime firmware/test_io_runtime.cpp
+  ${FIRMWARE_APP}/Src/io_runtime.c ${FIRMWARE_APP}/Src/device_io.c ${FIRMWARE_APP}/Src/pressure_adc.c)
+target_include_directories(test_io_runtime PRIVATE firmware/fakes ${FIRMWARE_APP}/../Core/Inc)
+target_link_libraries(test_io_runtime PRIVATE stm32_io_protocol equipment_protocol)
+add_test(NAME STM32_RUNTIME_HOST COMMAND test_io_runtime)
+
+add_executable(test_uart_io firmware/test_uart_io.c ${FIRMWARE_APP}/Src/uart_io.c)
+target_include_directories(test_uart_io PRIVATE firmware/fakes ${FIRMWARE_APP}/Inc)
+add_test(NAME STM32_UART_ADAPTER_HOST COMMAND test_uart_io)

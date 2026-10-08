@@ -21,6 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "io_runtime.h"
 
 /* USER CODE END Includes */
 
@@ -102,6 +103,7 @@ int main(void)
   MX_I2C1_Init();
   MX_TIM5_Init();
   /* USER CODE BEGIN 2 */
+  IoRuntime_Init(&hadc1, &huart2);
 
   /* USER CODE END 2 */
 
@@ -112,6 +114,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    IoRuntime_Poll();
   }
   /* USER CODE END 3 */
 }
