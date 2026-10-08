@@ -2,24 +2,31 @@
 
 Baseline: `babd7c5`, NUCLEO-F411RE / STM32F411RET6.
 
+Hardware evidence: see [HARDWARE_VERIFICATION.md](HARDWARE_VERIFICATION.md),
+including the latest successful RUN-state E-Stop physical E2E test.
+
 ## Scope and status
 
 GPIO device layer, ADC reader, ASCII protocol, and foreground runtime are
-IMPLEMENTED. Host tests execute the actual C implementations with fake HAL/I/O;
-the protocol contract tests use the actual Linux parser and serializer.
-These tests are HOST VERIFIED only. They do not establish physical timing,
-voltage, sampling accuracy, UART delivery, boot behavior, or hardware safety.
+IMPLEMENTED and HOST VERIFIED. Host tests execute actual C implementations with
+fake HAL/I/O and use the actual Linux parser and serializer. Hardware verification
+below comes from separate physical tests, not from the host test results.
 
-- Flash: BLOCKED (execution environment has no USB device exposure).
-- Boot: NOT VERIFIED.
-- GPIO physical output, Door/E-Stop physical input, ADC physical values:
-  NOT VERIFIED.
-- USART2 VCP and Linux/STM32 physical E2E: NOT VERIFIED.
-- Disconnect/reconnect, recovery, physical safe-state behavior: NOT VERIFIED.
-- DHT11, Stepper rotation, OLED: not implemented by this runtime.
+- Flash readback and boot/runtime: PASS / HW VERIFIED.
+- GPIO outputs, Door/E-Stop physical inputs and raw ADC values: PASS for the
+  tested scope documented in the hardware report.
+- USART2 VCP bidirectional communication: PASS / HW VERIFIED.
+- RUN-state EmergencyStop E2E: PASS / HW VERIFIED, including user-confirmed
+  pump/heater OFF, buzzer ON, ERROR red ON and final test cleanup OFF.
+- Core MVP physical E2E: PASS / HW VERIFIED using the unchanged controller and
+  a temporary test harness; production CLI limitations below still apply.
+- Emergency-stop response-time guarantee: NOT VERIFIED.
+- Pressure calibration: undecided; verified ADC values are raw counts.
+- Disconnect/stale-data safety policy and recovery: NOT VERIFIED.
+- DHT11, Stepper rotation, OLED: NOT VERIFIED; not implemented by this runtime.
 
-Do not repeat ST-LINK discovery until device exposure changes. No CubeMX, pin,
-clock, initialization, IRQ or DMA configuration was changed. `main.c` calls
+The earlier USB exposure blocker was cleared during hardware testing. No CubeMX,
+pin, clock, initialization, IRQ or DMA configuration was changed. `main.c` calls
 `IoRuntime_Init` after generated peripheral initialization and `IoRuntime_Poll`
 inside the foreground loop, exclusively in USER CODE regions.
 
@@ -75,7 +82,8 @@ counters, not new wire messages. TEMP and MOTOR reports are not fabricated.
 
 - PRESSURE is a raw ADC count, not a calibrated physical pressure. Linux's existing
   threshold is 50; agreeing on sensor units/scaling is required before physical
-  control acceptance. Host tests establish syntax and raw-value transport only.
+  calibrated-pressure acceptance. Physical tests verified raw ADC values 0..4095;
+  they do not establish physical pressure accuracy.
 - VALVE has no specified mechanical position/direction mapping to the 28BYJ-48.
   All received VALVE commands are counted but cannot claim actuator completion.
 - The existing Linux `apps/controller/main.cpp` never issues START and exits after
@@ -116,10 +124,10 @@ The original 30 CTest scenarios remain. Four additional suites:
 - `STM32_UART_ADAPTER_HOST`: register-access branch behavior only; simulated
   registers cannot reproduce SR/DR hardware side effects or baud timing.
 
-Next hardware session: Flash/verify ELF, prove boot reaches the foreground loop,
-then observe every GPIO channel, input polarity, ADC endpoints/midpoint, VCP
-bidirectional traffic, and full physical controller behavior. Disconnect/reconnect
-and recovery require an agreed policy and separate physical validation.
+Remaining verification: emergency-stop response-time guarantees, calibrated
+pressure, disconnect/stale-data safety and recovery, and DHT11/Stepper/OLED.
+Disconnect/stale-data handling requires an agreed policy before physical acceptance.
+Completed core physical E2E evidence is recorded in the linked hardware report.
 
 ## Recorded validation (2026-10-08, Asia/Seoul)
 
@@ -129,4 +137,6 @@ and recovery require an agreed policy and separate physical validation.
 - Baseline comparison: generated `main.c` content outside USER CODE regions is
   byte-identical; original CRLF line endings preserved. No `.ioc` or generated
   peripheral configuration changes.
-- Hardware statuses above remain unchanged. No physical PASS is claimed.
+- Subsequent hardware verification established core physical E2E PASS, including
+  RUN-state E-Stop. See the hardware report for evidence, test harness scope and
+  the remaining unverified guarantees; host tests alone do not establish HW PASS.

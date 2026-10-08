@@ -48,13 +48,14 @@ existing defaults and were not part of this targeted test.
 
 A subsequent 15-second input-only test received actual `ESTOP:OFF -> ESTOP:ON
 -> ESTOP:OFF -> ESTOP:ON` transitions while the user operated the switch.
-This supersedes the earlier E-Stop input FAIL below. The underlying reason for
+This supersedes the earlier failed E-Stop input attempts. The underlying reason for
 the earlier constant HIGH was not established. EmergencyStop controller physical
-E2E was not exercised in this short test and remains NOT VERIFIED.
+E2E was NOT VERIFIED at that point; the latest RUN-state physical E2E test
+supersedes that status with PASS / HW VERIFIED.
 Evidence: `build/hardware-verification/2026-10-08/estop-quick.log`.
 No output commands or firmware changes were made by this retest.
 
-## Earlier results and exact evidence scope
+## Current results and exact evidence scope
 
 | Item | Result | Evidence / limits |
 | --- | --- | --- |
@@ -63,17 +64,17 @@ No output commands or firmware changes were made by this retest.
 | Boot / foreground runtime | PASS | After user power cycle and WSL USB reattach, continuous actual DOOR/ESTOP/PRESSURE telemetry |
 | PUMP PB7 | PASS at MCU pin | UART ON/OFF produced matching ODR and IDR transitions |
 | HEATER PA6 | PASS at MCU pin | UART ON/OFF produced matching ODR and IDR transitions |
-| BUZZER PA7 | PASS at MCU pin; audible ON confirmed | UART ON/OFF produced matching ODR and IDR; user heard buzzer and later physically removed it due to volume |
+| BUZZER PA7 | PASS at MCU pin; audible ON confirmed | UART ON/OFF produced matching ODR and IDR; user confirmed audible ON and subsequent OFF in the latest RUN-state test after reconnecting the buzzer |
 | RUN green PB5 / ERROR red PB4 | PASS at MCU pin | Both ON/OFF commands produced matching ODR and IDR transitions |
-| External LED / RGB response | Observed, with limits | User reported green, yellow and RGB lighting. Individual lamp/color-to-command mapping and every visible OFF were not separately confirmed; pin results above are more specific than visual evidence |
+| External LED / RGB response | PASS for tested physical E2E | User confirmed pump/heater LEDs OFF, audible buzzer ON, ERROR red ON and subsequent all OFF in the latest RUN-state E-Stop test; IDLE/READY colors were not part of this test |
 | Door PB0 input | PASS | Actual OPEN/CLOSED transitions, PB0 HIGH/LOW agrees with telemetry in stable samples |
-| E-Stop PB1 input | FAIL | User confirmed manipulation twice, but ESTOP remained OFF; dedicated 30-second retest had 380 OFF lines and only HIGH PB1 snapshots |
+| E-Stop PB1 input | PASS / HW VERIFIED | Subsequent physical switch operation produced OFF/ON transitions; latest RUN-state test received ESTOP:ON and triggered EmergencyStop |
 | PA0 ADC raw values | PASS | Physical potentiometer movement produced minimum 0, maximum 4095, intermediate values (175 distinct values in primary input window) |
 | USART2 actual bidirectional communication | PASS | Sensor telemetry reaches Linux; Linux commands cause corresponding actual GPIO IDR/ODR transitions |
 | Existing Linux UART executable | PASS for real serial operation | 419 accepted sensor lines in its 10-second run; no UART read/write failure. Remained Idle as expected without START |
 | Door-driven controller physical path | PASS through MCU pins; attached-output response observed | Real input -> actual Linux controller -> real UART -> actual GPIO. DoorOpen Fault disables pump/heater and enables buzzer/error red |
-| E-Stop EmergencyStop E2E | BLOCKED | No ESTOP:ON received; EmergencyStop path cannot be physically verified |
-| Core MVP as a whole | BLOCKED | E-Stop input failure, associated E2E, and remaining explicit visual output mapping checks |
+| E-Stop EmergencyStop E2E | PASS / HW VERIFIED | RUN -> actual ESTOP:ON -> Linux EmergencyStop -> pump/heater OFF, buzzer/error red ON; GPIO readback and user physical observation agree |
+| Core MVP — core physical E2E | PASS / HW VERIFIED | Sensor -> STM32 -> UART -> unchanged Linux controller -> UART -> physical outputs verified, including RUN-state E-Stop; response-time guarantees and extended scope remain unverified |
 
 No DHT11, Stepper rotation or OLED physical acceptance is claimed. ADC evidence
 is raw counts, not physical pressure calibration. No oscilloscope or voltage-meter
@@ -117,25 +118,22 @@ Both DoorOpen Fault samples had GPIOA ODR `0x80` and GPIOB ODR `0x10`: pump/heat
 OFF, buzzer ON and ERROR red ON. This is the existing Linux fault policy, not the
 all-off initialization safe state. VALVE commands remain recognized but unsupported.
 
-The user removed the buzzer due to excessive volume. Subsequent E-Stop checks were
-input-only with all outputs OFF; no further buzzer ON test was performed. The final
-GPIOA and GPIOB ODR values were both zero. GPIOC ODR was `0x10` (DHT11 PC4 HIGH;
-stepper PC0..PC3 all LOW). The buzzer remains physically disconnected by the user.
+The user initially removed the buzzer due to excessive volume. The following
+input-only E-Stop checks kept all outputs OFF. At that stage GPIOA and GPIOB ODR
+were zero and GPIOC ODR was `0x10` (DHT11 PC4 HIGH; stepper PC0..PC3 all LOW).
+The buzzer was subsequently reconnected for the requested RUN-state E-Stop test;
+the user confirmed audible operation. Final GPIOA/GPIOB readback after that test
+again confirmed all tested outputs OFF.
 
-## ISSUE FOUND — E-Stop wiring/identity
+## RESOLVED / SUPERSEDED — E-Stop wiring/identity
 
-- File reviewed: `App/Src/device_io.c`, generated `Core/Inc/main.h` and current
-  GPIO register configuration. No code defect is established.
-- Current behavior: PB1 stays HIGH and ESTOP stays OFF while the user reports
-  pressing E-Stop. During the dedicated retest, DOOR toggled instead.
-- Expected behavior: the PB1 E-Stop input falls LOW and sends ESTOP:ON.
-- Cause: not proven. The operated switch may be wired to PB0 or PB1 may be
-  disconnected; identify the physical switch and trace its wiring before edits.
-- Minimal next action: with outputs OFF and buzzer disconnected, verify the actual
-  switch connection to PB1/GND and continuity when pressed, then repeat input-only
-  acquisition. Do not remap pins or invert firmware semantics to hide the symptom.
-- Possible regression: a speculative firmware pin change could break the already
-  verified Door input and would violate the fixed CubeMX pin assignment.
+- Earlier observation: PB1 stayed HIGH and ESTOP stayed OFF during initial
+  attempts; DOOR toggled during one retest. Those failed attempts remain in logs.
+- Resolution evidence: the later physical input test produced ESTOP OFF/ON
+  transitions, and the latest RUN-state test verified EmergencyStop through
+  physical outputs. The earlier issue is no longer an active blocker.
+- Root cause of the initial observation was not established; no wiring repair
+  or firmware fix is claimed. No pin remapping or input polarity change was made.
 
 ## Evidence and remaining work
 
@@ -146,11 +144,17 @@ Key files: `output-test.jsonl`, `input-test.jsonl`, `estop-test.jsonl`,
 `linux-runtime.log`, `e2e.jsonl`, `summary.json`, `flash-readback.log`,
 `final-state.log`. `output-interrupted.jsonl` preserves the interrupted first run.
 
-Remaining: correct/identify E-Stop wiring and verify EmergencyStop physical E2E;
-explicitly confirm each LED/color and visible OFF against its command; agree on
-pressure scaling and stale-data/disconnect policies; subsequently verify DHT11,
-Stepper and OLED. Power-cycle/re-attachment recovery occurred in this session,
-but this is not acceptance of cable-loss output safety or automatic reconnection.
+Remaining limitations:
+
+- Emergency-stop response-time guarantee: NOT VERIFIED. Test harness scheduling
+  does not establish production real-time latency.
+- Pressure calibration and physical units/scaling: undecided; only raw ADC
+  endpoints and intermediate values are verified.
+- Disconnect/stale-data safety policy and recovery: NOT VERIFIED. Observed
+  power-cycle/re-attachment is not acceptance of cable-loss output safety or
+  automatic reconnection.
+- DHT11, Stepper rotation and OLED: NOT VERIFIED.
+- RGB IDLE/READY colors and VALVE/Stepper mapping remain outside the tested path.
 
 The previous 34/34 host test result is unchanged; tests were not rerun because
 production code was not modified. The temporary C++ harness compiled successfully
