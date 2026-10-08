@@ -1,0 +1,2 @@
+add_library(equipment_transport src/serial_transport.cpp)
+target_include_directories(equipment_transport PUBLIC include)

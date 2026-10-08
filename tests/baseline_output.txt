@@ -1,0 +1,146 @@
+C++ Equipment Controller
+
+[TEST 1] START with door open
+State: 0
+Sequence step: 0
+
+[TEST 2] Normal sequence
+After START state: 1
+Sequence step: 1
+Update 1 | state=1 | step=2 | pump=0 | heater=0 | run_led=0
+Update 2 | state=1 | step=3 | pump=1 | heater=0 | run_led=0
+Update 3 | state=1 | step=4 | pump=1 | heater=0 | run_led=0
+Update 4 | state=1 | step=5 | pump=1 | heater=1 | run_led=0
+Update 5 | state=1 | step=6 | pump=1 | heater=1 | run_led=0
+Update 6 | state=2 | step=7 | pump=1 | heater=1 | run_led=1
+Update 7 | state=2 | step=8 | pump=1 | heater=1 | run_led=1
+Update 8 | state=2 | step=9 | pump=1 | heater=1 | run_led=1
+Update 9 | state=0 | step=0 | pump=0 | heater=0 | run_led=0
+
+[TEST 3] Door open during RUN
+Before fault | state=2 | step=7
+After fault | state=3 | step=0 | alarm=1 | pump=0 | heater=0 | run_led=0 | error_led=1 | buzzer=1
+
+[TEST 4] Pressure fault
+Before fault | state=1 | step=3 | pressure=60 | pump=1
+After fault | state=3 | step=0 | alarm=2 | pressure=40 | pump=0 | heater=0 | run_led=0 | error_led=1 | buzzer=1
+
+[TEST 5] Over temperature
+Before fault | state=1 | step=5 | temperature=25 | pump=1 | heater=1
+After fault | state=3 | step=0 | alarm=3 | temperature=90 | pump=0 | heater=0 | run_led=0 | error_led=1 | buzzer=1
+
+[TEST 6] Motor fault during RUN
+Before fault | state=2 | step=7 | motor_fault=0
+After fault | state=3 | step=0 | alarm=4 | motor_fault=1 | pump=0 | heater=0 | run_led=0 | error_led=1 | buzzer=1
+
+[TEST 7] Emergency stop during RUN
+Before fault | state=2 | step=7 | emergency_stop=0
+After fault | state=3 | step=0 | alarm=5 | emergency_stop=1 | pump=0 | heater=0 | run_led=0 | error_led=1 | buzzer=1
+
+[TEST 8] Communication fault during RUN
+Before fault | state=2 | step=7 | communication_ok=1
+After fault | state=3 | step=0 | alarm=6 | communication_ok=0 | pump=0 | heater=0 | run_led=0 | error_led=1 | buzzer=1
+
+[TEST 9] RESET / Recovery
+RESET with fault | state=3 | alarm=5
+RESET after recovery | state=0 | step=0 | alarm=0 | pump=0 | heater=0 | run_led=0 | error_led=0 | buzzer=0
+
+[TEST 10] STOP during RUN
+Before STOP | state=2 | step=7 | pump=1 | heater=1
+After STOP | state=0 | step=0 | alarm=0 | pump=0 | heater=0 | valve=0 | run_led=0 | error_led=0 | buzzer=0
+
+[TEST 11] Logger
+[2026-10-08 16:43:05] [INFO] Logger initialized
+[2026-10-08 16:43:05] [WARNING] Warning test
+[2026-10-08 16:43:05] [ERROR] Error test
+
+[TEST 12] Controller Event Logging
+[2026-10-08 16:43:05] [INFO] START accepted: IDLE -> READY
+[2026-10-08 16:43:05] [INFO] STOP accepted: -> IDLE
+[2026-10-08 16:43:05] [INFO] START accepted: IDLE -> READY
+[2026-10-08 16:43:05] [ERROR] FAULT detected: alarm=5
+[2026-10-08 16:43:05] [INFO] RESET accepted: ERROR -> IDLE
+
+[TEST 13] STOP boundary conditions
+IDLE + STOP | state=0 | step=0 | alarm=0
+READY + STOP | state=0 | step=0 | alarm=0
+ERROR + STOP | state=3 | step=0 | alarm=5 | pump=0 | heater=0 | run_led=0 | error_led=1 | buzzer=1
+
+[TEST 14] RESET boundary conditions
+RUN + RESET | state=2 | step=7 | alarm=0
+RESET + update | state=0 | step=0 | alarm=0 | pump=0 | heater=0 | run_led=0 | error_led=0 | buzzer=0
+
+[TEST 15] Repeated fault stability
+[2026-10-08 16:43:05] [INFO] START accepted: IDLE -> READY
+[2026-10-08 16:43:05] [ERROR] FAULT detected: alarm=5
+Repeated fault | state=3 | step=0 | alarm=5 | pump=0 | heater=0 | run_led=0 | error_led=1 | buzzer=1
+
+[TEST 16] ASCII temperature parser
+Valid TEMP | parsed=1 | temperature=26.5
+Invalid TEMP | parsed=0 | temperature=26.5
+
+[TEST 17] ASCII sensor parser
+TEMP:32.5 | parsed=1
+PRESSURE:75 | parsed=1
+DOOR:OPEN | parsed=1
+ESTOP:ON | parsed=1
+MOTOR:FAULT | parsed=1
+SensorState | temperature=32.5 | pressure=75 | door_closed=0 | emergency_stop=1 | motor_fault=1
+Invalid inputs | pressure=0 | door=0 | pressure_after=75 | door_after=0
+
+[TEST 18] ASCII device serializer
+PUMP:ON
+HEATER:ON
+VALVE:CLOSED
+BUZZER:OFF
+RUN_LED:ON
+ERROR_LED:OFF
+
+[TEST 19] ASCII parser boundary checks
+Input=[] | parsed=0
+Input=[TEMP] | parsed=0
+Input=[TEMP:] | parsed=0
+Input=[TEMP:abc] | parsed=0
+Input=[TEMP:26.5abc] | parsed=0
+Input=[TEMP:nan] | parsed=0
+Input=[TEMP:inf] | parsed=0
+Input=[PRESSURE:abc] | parsed=0
+Input=[PRESSURE:75.5] | parsed=0
+Input=[PRESSURE:999999999999999999999] | parsed=0
+Input=[DOOR:UNKNOWN] | parsed=0
+Input=[ESTOP:INVALID] | parsed=0
+Input=[MOTOR:UNKNOWN] | parsed=0
+Input=[UNKNOWN:123] | parsed=0
+Rejected=14/14 | temperature=25 | pressure=60
+
+[TEST 20] Serial transport basic
+Initial open=0
+Invalid port opened=0 | isOpen=0
+After close isOpen=0
+
+[TEST 21] Serial transport closed port
+Write=0 | Read=0 | Received bytes=0
+
+[TEST 22] Virtual UART TX/RX
+Virtual port opened=1
+TX sent=1 | bytes=8 | data=PUMP:ON
+RX injected=10 | received=1 | data=TEMP:28.5
+
+[TEST 23] UART fragmented line receive
+Part 1 | complete lines=0
+Part 2 | complete lines=1 | line=TEMP:28.5
+Part 3 | complete lines=1 | line=PRESSURE:75
+
+[TEST 24] UART oversized line protection
+Oversized input | complete lines=0
+Recovery | complete lines=1 | line=TEMP:30.5
+
+[TEST 25] UART peer disconnect
+Before disconnect | isOpen=1
+After disconnect | read_ok=0 | isOpen=0 | received_bytes=0
+
+[TEST 26] UART reconnect after disconnect
+First connection | isOpen=1
+After disconnect | read_ok=0 | isOpen=0
+Reconnect | opened=1 | isOpen=1
+After reconnect | injected=10 | rx_ok=1 | complete lines=1 | line=TEMP:31.5

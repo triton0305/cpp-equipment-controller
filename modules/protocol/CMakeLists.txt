@@ -1,0 +1,3 @@
+add_library(equipment_protocol src/ascii_protocol.cpp)
+target_include_directories(equipment_protocol PUBLIC include)
+target_link_libraries(equipment_protocol PUBLIC equipment_core)

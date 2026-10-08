@@ -1,0 +1,2 @@
+add_executable(equipment_controller main.cpp)
+target_link_libraries(equipment_controller PRIVATE equipment_core equipment_protocol equipment_transport)

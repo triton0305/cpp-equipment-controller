@@ -1,0 +1,3 @@
+add_library(equipment_core src/equipment_controller.cpp)
+target_include_directories(equipment_core PUBLIC include)
+target_link_libraries(equipment_core PUBLIC equipment_logging)
