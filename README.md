@@ -24,11 +24,7 @@ Linux / WSL에서 State Machine, Sequence, Alarm과 출력 상태를 관리합�
 
 | 날짜 | 개발 내용 |
 |---|---|
-| [2026.10.08](https://github.com/triton0305/cpp-equipment-controller/commit/d369655de6b2da80c92cd9a169ade65186b3e674) | C++ Controller · State / Sequence 기본 구조 구현 |
-| [2026.10.08](https://github.com/triton0305/cpp-equipment-controller/commit/6b640ed0ec78b2ad4020e49d216e301dfe1198f9) | 6종 Fault · STOP / RESET · 이벤트 로그와 경계 조건 검증 |
-| [2026.10.08](https://github.com/triton0305/cpp-equipment-controller/commit/b93b98a83d8d6dee2b5defad78a64c64d2c497e4) | ASCII Protocol · Linux Serial Transport · 모듈 분리와 CTest 30개 구성 |
-| [2026.10.08](https://github.com/triton0305/cpp-equipment-controller/commit/0a73996ebc61e2a2eb3ec9452e8117a59274a897) | STM32 GPIO / ADC / UART Runtime 연동 · Host 검증 4개 추가 |
-| [2026.10.08](https://github.com/triton0305/cpp-equipment-controller/commit/c5d6953605a620da03defa46681c7e653f1c9e39) | 실제 보드 Flash / Boot / I/O · Door Fault / RUN 중 E-Stop E2E 검증 기록 |
+| [2026.10.08](https://github.com/triton0305/cpp-equipment-controller/commit/c5d6953605a620da03defa46681c7e653f1c9e39) | C++ Controller · State / Sequence · 6종 Fault · Logging · ASCII Protocol / Serial Transport · STM32 GPIO / ADC / UART Runtime 구현 · CTest 34개 및 실제 보드 E2E 검증 |
 
 ## Validation
 
