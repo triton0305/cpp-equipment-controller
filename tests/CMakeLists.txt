@@ -35,3 +35,10 @@ add_executable(test_safe_valve core/test_safe_valve.cpp)
 target_link_libraries(test_safe_valve PRIVATE equipment_core)
 add_test(NAME TEST_30 COMMAND test_safe_valve)
 set_tests_properties(TEST_30 PROPERTIES TIMEOUT 5)
+
+# Compile the actual firmware C helpers on the host with a small HAL fake.
+enable_language(C)
+set(FIRMWARE_APP ${PROJECT_SOURCE_DIR}/firmware/stm32-equipment-io/App)
+add_executable(test_pressure_adc firmware/test_pressure_adc.c ${FIRMWARE_APP}/Src/pressure_adc.c)
+target_include_directories(test_pressure_adc PRIVATE firmware/fakes ${FIRMWARE_APP}/Inc)
+add_test(NAME STM32_ADC_HOST COMMAND test_pressure_adc)
