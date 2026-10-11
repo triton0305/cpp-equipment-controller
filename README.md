@@ -102,7 +102,7 @@ GPIO 검증은 MCU의 ODR / IDR readback과 사용자의 LED·부저 관찰을 �
 
 ### Emergency Stop (E-Stop)
 
-[!(docs/assets/ESTOP_demo.gif)](https://youtu.be/wWkQ-iPONAk)
+[![E-Stop Demo](https://raw.githubusercontent.com/triton0305/cpp-equipment-controller/main/docs/assets/ESTOP_demo.gif)](https://youtu.be/wWkQ-iPONAk)
 
 RUN 상태에서 E-Stop 스위치를 누르면 Pump / Heater 출력과 RUN LED가 꺼지고, ERROR LED와 부저가 작동합니다.
 
