@@ -102,9 +102,7 @@ GPIO 검증은 MCU의 ODR / IDR readback과 사용자의 LED·부저 관찰을 �
 
 ### Emergency Stop (E-Stop)
 
-<img width="654" height="368" alt="ESTOP_gif" src="https://github.com/user-attachments/assets/d1ddbeb4-3279-4a89-9796-9d90ed255f37" />
-
-[![E-Stop 동작 영상](https://img.youtube.com/vi/wWkQ-iPONAk/hqdefault.jpg)](https://youtu.be/wWkQ-iPONAk)
+[![E-Stop Demo](docs/assets/ESTOP_demo.gif)](https://youtu.be/wWkQ-iPONAk)
 
 RUN 상태에서 E-Stop 스위치를 누르면 Pump / Heater 출력과 RUN LED가 꺼지고, ERROR LED와 부저가 작동합니다.
 
