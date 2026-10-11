@@ -100,19 +100,11 @@ GPIO 검증은 MCU의 ODR / IDR readback과 사용자의 LED·부저 관찰을 �
 
 ## Demo
 
-**RUN 중 E-Stop 동작**
+### Emergency Stop (E-Stop)
 
-> Demo GIF · 부저음 포함 영상 추가 예정
+![E-Stop Demo](docs/assets/ESTOP_demo.gif)
 
-<!-- Demo GIF를 docs/assets/estop-demo.gif에 추가한 뒤 아래 HTML 주석을 해제합니다.
-<p align="center">
-  <img src="docs/assets/estop-demo.gif" alt="RUN 중 E-Stop: 초록 OFF, 펌프·히터 OFF, 빨강·부저 ON" width="780">
-</p>
--->
-
-<!-- 부저음을 포함한 영상 링크를 추가합니다.
-<p align="center"><a href="VIDEO_URL">부저음을 포함한 E-Stop 동작 영상</a></p>
--->
+[원본 영상 보기](docs/assets/ESTOP_video.mp4)
 
 | 입력 전 · RUN | 실제 입력 | 입력 후 · ERROR |
 |:---:|:---:|:---:|
