@@ -104,7 +104,7 @@ GPIO 검증은 MCU의 ODR / IDR readback과 사용자의 LED·부저 관찰을 �
 
 <img width="654" height="368" alt="ESTOP_gif" src="https://github.com/user-attachments/assets/d1ddbeb4-3279-4a89-9796-9d90ed255f37" />
 
-[원본 영상 보기](docs/assets/ESTOP_video.mp4)
+[원본 영상 보기](https://youtu.be/wWkQ-iPONAk?si=9315cNWADHSEgxSz)
 
 | 입력 전 · RUN | 실제 입력 | 입력 후 · ERROR |
 |:---:|:---:|:---:|
