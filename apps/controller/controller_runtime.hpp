@@ -21,8 +21,24 @@ public:
                     Now now = Clock::now);
   void poll();
   void shutdown();
+  bool handleCommand(const Command& command);
 
 private:
+  void service();
+  void logStatus();
+  Clock::time_point next_status_{};
+  static constexpr auto EnvironmentTimeout = std::chrono::seconds(5);
+  Clock::time_point last_temperature_{}, last_humidity_{}, last_pressure_{};
+  void expireEnvironment();
+  enum class Rearm { Armed, WaitOpen, WaitClose };
+  Rearm rearm_ = Rearm::Armed;
+  bool sequence_advanced_ = false;
+  EquipmentState reported_state_ = EquipmentState::Idle;
+  void updateController(bool advance = false);
+  static constexpr auto RunDuration = std::chrono::seconds(30);
+  Clock::time_point run_started_{};
+  bool run_timer_active_ = false;
+  bool updateReady(Clock::time_point now);
   void communicationFault(const char* reason);
   void disconnect();
   bool checkSensorTimeout();
@@ -33,6 +49,22 @@ private:
   Now now_;
   SerialTransport serial_;
   SensorState sensor_;
+
   Clock::time_point last_sensor_, next_reconnect_, next_safe_refresh_;
+  // E-Stop Buzzer
+  static constexpr auto BuzzerDuration = std::chrono::seconds(2);
+  Clock::time_point buzzer_started_{};
+  bool buzzer_timer_active_ = false;
+  bool buzzer_expired_ = false;
+
+  // Door safety verification and READY indicator
+  static constexpr auto ReadyDelay = std::chrono::seconds(5);
+  Clock::time_point ready_started_{};
+  bool ready_timer_active_ = false;
+  bool ready_indicator_on_ = false;
+
+  // Require fresh Door and E-Stop readings after each connection.
+  bool door_status_received_ = false;
+  bool estop_status_received_ = false;
 };
 #endif

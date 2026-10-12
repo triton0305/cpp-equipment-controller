@@ -1,0 +1,2 @@
+# CubeMX main.c uses CRLF. Preserve it while checking other whitespace errors.
+firmware/stm32-equipment-io/Core/Src/main.c whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

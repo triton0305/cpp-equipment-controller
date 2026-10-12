@@ -1,3 +1,4 @@
+#include "test_sensor_state.hpp"
 #include <iostream>
 #include <fcntl.h>
 #include <stdlib.h>
@@ -19,7 +20,9 @@ int main()
 
   EquipmentController blocked_controller;
 
-  SensorState blocked_sensor;
+  blocked_controller.setSensorState(normalSensors());
+
+  SensorState blocked_sensor = normalSensors();
   blocked_sensor.door_closed = false;
 
   blocked_controller.setSensorState(blocked_sensor);
@@ -40,6 +43,8 @@ int main()
   std::cout << "\n[TEST 2] Normal sequence\n";
 
   EquipmentController controller;
+
+  controller.setSensorState(normalSensors());
 
   controller.handleCommand(start_command);
 
@@ -75,6 +80,8 @@ int main()
 
   EquipmentController fault_controller;
 
+  fault_controller.setSensorState(normalSensors());
+
   fault_controller.handleCommand(start_command);
 
   for (int i = 0; i < 6; ++i)
@@ -88,7 +95,7 @@ int main()
     << " | step=" << static_cast<int>(fault_controller.getSequenceStep())
     << '\n';
 
-  SensorState fault_sensor;
+  SensorState fault_sensor = normalSensors();
   fault_sensor.door_closed = false;
 
   fault_controller.setSensorState(fault_sensor);
@@ -115,6 +122,8 @@ int main()
 
   EquipmentController pressure_controller;
 
+  pressure_controller.setSensorState(normalSensors());
+
   pressure_controller.handleCommand(start_command);
 
   pressure_controller.update();
@@ -131,10 +140,12 @@ int main()
     << " | pump=" << pressure_device_before.pump_on
     << '\n';
 
-  SensorState pressure_sensor;
+  SensorState pressure_sensor = normalSensors();
   pressure_sensor.pressure = 40;
 
   pressure_controller.setSensorState(pressure_sensor);
+  pressure_controller.observeMeasurement(SensorKind::Pressure);
+  pressure_controller.observeMeasurement(SensorKind::Pressure);
   pressure_controller.update();
 
   const DeviceState& pressure_device_after =
@@ -159,6 +170,8 @@ int main()
 
   EquipmentController temperature_controller;
 
+  temperature_controller.setSensorState(normalSensors());
+
   temperature_controller.handleCommand(start_command);
 
   for (int i = 0; i < 4; ++i)
@@ -178,10 +191,12 @@ int main()
     << " | heater=" << temperature_device_before.heater_on
     << '\n';
 
-  SensorState temperature_sensor;
+  SensorState temperature_sensor = normalSensors();
   temperature_sensor.temperature = 90.0;
 
   temperature_controller.setSensorState(temperature_sensor);
+  temperature_controller.observeMeasurement(SensorKind::Temperature);
+  temperature_controller.observeMeasurement(SensorKind::Temperature);
   temperature_controller.update();
 
   const DeviceState& temperature_device_after =
@@ -206,6 +221,8 @@ int main()
 
   EquipmentController motor_controller;
 
+  motor_controller.setSensorState(normalSensors());
+
   motor_controller.handleCommand(start_command);
 
   for (int i = 0; i < 6; ++i)
@@ -220,7 +237,7 @@ int main()
     << " | motor_fault=" << motor_controller.getSensorState().motor_fault
     << '\n';
 
-  SensorState motor_sensor;
+  SensorState motor_sensor = normalSensors();
   motor_sensor.motor_fault = true;
 
   motor_controller.setSensorState(motor_sensor);
@@ -248,6 +265,8 @@ int main()
 
   EquipmentController estop_controller;
 
+  estop_controller.setSensorState(normalSensors());
+
   estop_controller.handleCommand(start_command);
 
   for (int i = 0; i < 6; ++i)
@@ -263,7 +282,7 @@ int main()
     << estop_controller.getSensorState().emergency_stop
     << '\n';
 
-  SensorState estop_sensor;
+  SensorState estop_sensor = normalSensors();
   estop_sensor.emergency_stop = true;
 
   estop_controller.setSensorState(estop_sensor);
@@ -292,6 +311,8 @@ int main()
 
   EquipmentController communication_controller;
 
+  communication_controller.setSensorState(normalSensors());
+
   communication_controller.handleCommand(start_command);
 
   for (int i = 0; i < 6; ++i)
@@ -307,7 +328,7 @@ int main()
     << communication_controller.getSensorState().communication_ok
     << '\n';
 
-  SensorState communication_sensor;
+  SensorState communication_sensor = normalSensors();
   communication_sensor.communication_ok = false;
 
   communication_controller.setSensorState(communication_sensor);
@@ -336,6 +357,8 @@ int main()
 
   EquipmentController reset_controller;
 
+  reset_controller.setSensorState(normalSensors());
+
   reset_controller.handleCommand(start_command);
 
   for (int i = 0; i < 6; ++i)
@@ -343,7 +366,7 @@ int main()
     reset_controller.update();
   }
 
-  SensorState reset_sensor;
+  SensorState reset_sensor = normalSensors();
   reset_sensor.emergency_stop = true;
 
   reset_controller.setSensorState(reset_sensor);
@@ -387,6 +410,8 @@ int main()
   std::cout << "\n[TEST 10] STOP during RUN\n";
 
   EquipmentController stop_controller;
+
+  stop_controller.setSensorState(normalSensors());
 
   stop_controller.handleCommand(start_command);
 
@@ -443,6 +468,8 @@ int main()
 
   EquipmentController logging_controller;
 
+  logging_controller.setSensorState(normalSensors());
+
   logging_controller.setLogger(&logger);
 
   // START 이벤트
@@ -469,7 +496,7 @@ int main()
   }
 
   // Emergency Stop 발생
-  SensorState logging_sensor;
+  SensorState logging_sensor = normalSensors();
   logging_sensor.emergency_stop = true;
 
   logging_controller.setSensorState(logging_sensor);
@@ -493,6 +520,7 @@ int main()
 
   // IDLE + STOP -> IDLE 유지
   EquipmentController idle_stop_controller;
+  idle_stop_controller.setSensorState(normalSensors());
   idle_stop_controller.handleCommand(boundary_stop_command);
 
   std::cout
@@ -504,6 +532,7 @@ int main()
 
   // READY + STOP -> IDLE 전환
   EquipmentController ready_stop_controller;
+  ready_stop_controller.setSensorState(normalSensors());
 
   ready_stop_controller.handleCommand(start_command);
   ready_stop_controller.handleCommand(boundary_stop_command);
@@ -517,6 +546,7 @@ int main()
 
   // ERROR + STOP -> ERROR 유지
   EquipmentController error_stop_controller;
+  error_stop_controller.setSensorState(normalSensors());
 
   error_stop_controller.handleCommand(start_command);
 
@@ -525,7 +555,7 @@ int main()
     error_stop_controller.update();
   }
 
-  SensorState error_stop_sensor;
+  SensorState error_stop_sensor = normalSensors();
   error_stop_sensor.emergency_stop = true;
 
   error_stop_controller.setSensorState(error_stop_sensor);
@@ -557,6 +587,7 @@ int main()
 
   // RUN + RESET -> RUN 유지
   EquipmentController run_reset_controller;
+  run_reset_controller.setSensorState(normalSensors());
 
   run_reset_controller.handleCommand(start_command);
 
@@ -576,6 +607,7 @@ int main()
 
   // 정상 RESET 직후 update() -> IDLE 유지
   EquipmentController reset_update_controller;
+  reset_update_controller.setSensorState(normalSensors());
 
   reset_update_controller.handleCommand(start_command);
 
@@ -584,7 +616,7 @@ int main()
     reset_update_controller.update();
   }
 
-  SensorState reset_update_sensor;
+  SensorState reset_update_sensor = normalSensors();
   reset_update_sensor.emergency_stop = true;
 
   reset_update_controller.setSensorState(reset_update_sensor);
@@ -618,6 +650,8 @@ int main()
   Logger boundary_logger("equipment_controller.log");
 
   EquipmentController repeated_fault_controller;
+
+  repeated_fault_controller.setSensorState(normalSensors());
   repeated_fault_controller.setLogger(&boundary_logger);
 
   repeated_fault_controller.handleCommand(start_command);
@@ -627,7 +661,7 @@ int main()
     repeated_fault_controller.update();
   }
 
-  SensorState repeated_fault_sensor;
+  SensorState repeated_fault_sensor = normalSensors();
   repeated_fault_sensor.emergency_stop = true;
 
   repeated_fault_controller.setSensorState(repeated_fault_sensor);

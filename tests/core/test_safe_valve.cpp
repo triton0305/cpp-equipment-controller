@@ -1,3 +1,4 @@
+#include "test_sensor_state.hpp"
 #include <array>
 #include <iostream>
 #include <stdexcept>
@@ -35,11 +36,11 @@ int main()
       {
         sensor.door_closed = false;
       }},
-      {"Pressure", AlarmCode::PressureFault, 2, [](SensorState& sensor)
+      {"Pressure", AlarmCode::PressureCritical, 2, [](SensorState& sensor)
       {
         sensor.pressure = 40;
       }},
-      {"Temperature", AlarmCode::OverTemperature, 4, [](SensorState& sensor)
+      {"Temperature", AlarmCode::TemperatureCritical, 4, [](SensorState& sensor)
       {
         sensor.temperature = 90.0;
       }},
@@ -60,15 +61,23 @@ int main()
     for (const auto& test : cases)
     {
       EquipmentController controller;
+      controller.setSensorState(normalSensors());
       controller.handleCommand(Command{CommandType::Start});
       for (int i = 0; i < test.updatesBeforeFault; ++i)
       {
         controller.update();
       }
 
-      SensorState sensor;
+      SensorState sensor = normalSensors();
       test.inject(sensor);
       controller.setSensorState(sensor);
+      if (test.alarm == AlarmCode::PressureCritical || test.alarm == AlarmCode::TemperatureCritical)
+      {
+        const auto kind = test.alarm == AlarmCode::PressureCritical ? SensorKind::Pressure : SensorKind::Temperature;
+        controller.observeMeasurement(kind);
+        require(controller.getState() != EquipmentState::Error, "One critical sample must not latch");
+        controller.observeMeasurement(kind);
+      }
       controller.update();
 
       const std::string context(test.name);
@@ -88,7 +97,7 @@ int main()
         require(!controller.getDeviceState().valve_open,
                 "Valve must be closed after rejected RESET");
 
-        controller.setSensorState(SensorState{});
+        controller.setSensorState(normalSensors());
         controller.handleCommand(Command{CommandType::Reset});
         require(controller.getState() == EquipmentState::Idle &&
                 controller.getAlarmCode() == AlarmCode::None,

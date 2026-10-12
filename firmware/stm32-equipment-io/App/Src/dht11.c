@@ -13,6 +13,9 @@ static TIM_HandleTypeDef *clock_timer;
 static uint32_t last_attempt_ms, low_started_ms, capture_started_us, capture_started_ms;
 static uint32_t ready_delay_ms;
 static bool pending;
+static void (*service_hook)(void);
+
+void Dht11_SetServiceHook(void (*service)(void)) { service_hook = service; }
 
 static void input_mode(void)
 {
@@ -35,6 +38,7 @@ static bool wait_level(GPIO_PinState level, uint32_t timeout_us)
   const uint32_t start = micros();
   for (;;)
   {
+    if (service_hook) service_hook();
     const uint32_t now = micros();
     if ((uint32_t)(now - capture_started_us) >= DHT11_CAPTURE_LIMIT_US ||
         (uint32_t)(HAL_GetTick() - capture_started_ms) >= 10U ||
@@ -94,6 +98,7 @@ Dht11Result Dht11_Init(TIM_HandleTypeDef *timer)
   if (pending) input_mode();
   pending = false;
   clock_timer = NULL;
+  service_hook = NULL;
   if (!timer || timer->Instance != TIM5 || timer->Init.Prescaler != 83U ||
       timer->Init.Period != UINT32_MAX || timer->Init.CounterMode != TIM_COUNTERMODE_UP)
   {

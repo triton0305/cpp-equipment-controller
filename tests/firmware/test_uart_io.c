@@ -22,6 +22,30 @@ int main(void)
   }
   registers.SR = USART_SR_TXE;
   CHECK(UartIo_TryWrite('Z') && registers.DR == 'Z');
+  /* Capture buffering preserves byte order across wrap, including a full refresh. */
+  for (unsigned cycle = 0; cycle < 3; ++cycle)
+  {
+    for (unsigned i = 0; i < 100; ++i)
+    {
+      registers.SR = USART_SR_RXNE; registers.DR = i;
+      UartIo_BufferRx(); registers.SR = 0;
+    }
+    for (unsigned i = 0; i < 100; ++i)
+      CHECK(UartIo_TryRead(&byte) == 1 && byte == i);
+    CHECK(UartIo_TryRead(&byte) == 0);
+  }
+  for (unsigned i = 0; i < 129; ++i)
+  {
+    registers.SR = USART_SR_RXNE; registers.DR = i;
+    UartIo_BufferRx(); registers.SR = 0;
+  }
+  CHECK(UartIo_TryRead(&byte) == -1); // Overflow discards all old queued bytes.
+  CHECK(UartIo_TryRead(&byte) == 0);
+  registers.SR = USART_SR_RXNE; registers.DR = 'X'; UartIo_BufferRx();
+  registers.SR = USART_SR_ORE; UartIo_BufferRx(); registers.SR = 0;
+  CHECK(UartIo_TryRead(&byte) == -1 && UartIo_TryRead(&byte) == 0);
+  registers.SR = USART_SR_RXNE; registers.DR = 'Y'; UartIo_BufferRx(); registers.SR = 0;
+  CHECK(UartIo_TryRead(&byte) == 1 && byte == 'Y');
   /* Plain fake registers cannot prove peripheral SR/DR side effects or timing. */
   return 0;
 }

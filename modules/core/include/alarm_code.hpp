@@ -9,7 +9,10 @@ enum class AlarmCode
   OverTemperature,
   MotorFault,
   EmergencyStop,
-  CommunicationFault
+  CommunicationFault,
+  TemperatureCritical,
+  HumidityCritical,
+  PressureCritical
 };
 
 #endif

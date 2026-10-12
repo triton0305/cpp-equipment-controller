@@ -1,11 +1,14 @@
 extern "C" {
 #include "io_runtime.h"
+#include "io_environment.h"
+#include "dht11.h"
 #include "device_io.h"
 #include "uart_io.h"
 #include "main.h"
 }
 #include "ascii_protocol.hpp"
 #include "equipment_controller.hpp"
+#include "../core/test_sensor_state.hpp"
 #include <cstdlib>
 #include <deque>
 #include <iostream>
@@ -43,6 +46,25 @@ bool UartIo_TryWrite(uint8_t b)
   if (!tx_budget) return false;
   --tx_budget; tx += static_cast<char>(b); return true;
 }
+static Dht11Result dht_init_result = DHT11_OK;
+static Dht11Result dht_result = DHT11_NOT_READY;
+static Dht11Sample dht_sample{452, 259};
+static uint32_t dht_delay;
+static void (*dht_service)(void);
+Dht11Result Dht11_Init(TIM_HandleTypeDef *) { return dht_init_result; }
+Dht11Result Dht11_Request(void) { return DHT11_NOT_READY; }
+Dht11Result Dht11_Poll(Dht11Sample *sample)
+{
+  tick += dht_delay; dht_delay = 0;
+  if (dht_service) dht_service();
+  const auto result = dht_result; dht_result = DHT11_NOT_READY;
+  if (result == DHT11_OK) *sample = dht_sample;
+  return result;
+}
+void Dht11_Cancel(void) {}
+void Dht11_SetServiceHook(void (*service)(void)) { dht_service = service; }
+void UartIo_BufferRx(void) {}
+
 static void poll()
 {
   reads = writes = 0; IoRuntime_Poll();
@@ -60,10 +82,7 @@ static void check_devices(const DeviceState &d)
   CHECK(output(PUMP_LED_GPIO_Port, PUMP_LED_Pin) == d.pump_on);
   CHECK(output(HEATER_LED_GPIO_Port, HEATER_LED_Pin) == d.heater_on);
   CHECK(output(ALARM_BUZZER_GPIO_Port, ALARM_BUZZER_Pin) == d.buzzer_on);
-  CHECK(output(STATE_G_GPIO_Port, STATE_G_Pin) == d.run_led);
-  CHECK(output(STATE_R_GPIO_Port, STATE_R_Pin) == d.error_led);
-  CHECK(!output(STATE_B_GPIO_Port, STATE_B_Pin));
-  CHECK((GPIOC->output & 15) == 0); // VALVE must not actuate stepper.
+  CHECK((GPIOC->output & 15) == 0);
 }
 
 static void test_communication_failsafe()
@@ -220,10 +239,134 @@ static void test_communication_failsafe()
   init(); tick = timeout + 1; poll(); latched(); // Startup with no RX remains invalid.
 }
 
+static void test_state_protocol()
+{
+  ADC_HandleTypeDef adc{}; UART_HandleTypeDef uart{};
+  rx.clear(); tx.clear(); tick = 0; tx_budget = 10000;
+  IoRuntime_Init(&adc, &uart);
+  const auto rgb = [](bool red, bool green, bool blue) {
+    CHECK(output(STATE_R_GPIO_Port, STATE_R_Pin) == red);
+    CHECK(output(STATE_G_GPIO_Port, STATE_G_Pin) == green);
+    CHECK(output(STATE_B_GPIO_Port, STATE_B_Pin) == blue);
+  };
+  send("STATE:READY\nSTATE:RUN\n"); rgb(false, false, false);
+  CHECK(io_runtime_failsafe_latched);
+  send(AsciiProtocol::serializeDeviceState(DeviceState{}));
+  send("STATE:IDLE\n"); rgb(false, false, true);
+  send("STATE:READY\n"); rgb(true, true, false);
+  send("STATE:RUN\n"); rgb(false, true, false);
+  send("STATE:ERROR\n"); rgb(true, false, false);
+  send("STATE:SAFE\n"); rgb(false, false, false);
+  send("STATE:IDLE\nRUN_LED:ON\nERROR_LED:ON\n"); rgb(false, false, true);
+  // Error cache is retained across command-loss and subsequent SAFE refresh.
+  tick = IO_CONTROL_TIMEOUT_MS; poll(); rgb(true, false, false);
+  send("STATE:READY\n"); rgb(true, false, false);
+  send("STATE:RUN\n"); rgb(true, false, false);
+  DeviceState alarm; alarm.error_led = true;
+  send(AsciiProtocol::serializeDeviceState(alarm) + "STATE:SAFE\n"); rgb(true, false, false);
+  send(AsciiProtocol::serializeDeviceState(DeviceState{}) + "STATE:IDLE\n"); rgb(false, false, true);
+}
+
+static void test_reset_button()
+{
+  ADC_HandleTypeDef adc{}; UART_HandleTypeDef uart{};
+  rx.clear(); tx.clear(); tick = 0; tx_budget = 10000; adc_fail = false;
+  GPIOC->input = B1_Pin; GPIOB->input = ESTOP_SW_Pin;
+  IoRuntime_Init(&adc, &uart);
+  DeviceState alarm; alarm.error_led = true;
+  send(AsciiProtocol::serializeDeviceState(alarm));
+  GPIOC->input = 0; tick = 10; poll();
+  tick = 39; poll(); CHECK(tx.find("RESET") == std::string::npos);
+  GPIOC->input = B1_Pin; poll(); // bounce resets debounce
+  GPIOC->input = 0; tick = 50; poll();
+  tick = 80; poll(); tick = 100; poll(); poll();
+  CHECK(tx == "DOOR:CLOSED\nESTOP:OFF\nPRESSURE:2048\nRESET\n");
+  tx.clear(); tick = 200; poll(); poll(); CHECK(tx.find("RESET") == std::string::npos);
+  // Held button does not repeat, including after MCU initialization.
+  tx.clear(); IoRuntime_Init(&adc, &uart); send(AsciiProtocol::serializeDeviceState(alarm));
+  tick = 300; poll(); poll(); CHECK(tx.find("RESET") == std::string::npos);
+  tx.clear(); GPIOC->input = B1_Pin; tick = 310; poll(); tick = 340; poll();
+  GPIOB->input = 0; // E-stop blocks reset transmission
+  GPIOC->input = 0; tick = 350; poll(); tick = 380; poll();
+  tick = 400; poll(); poll(); CHECK(tx.find("RESET") == std::string::npos);
+}
+
+static void test_environment()
+{
+  ADC_HandleTypeDef adc{}; UART_HandleTypeDef uart{}; TIM_HandleTypeDef timer{};
+  auto init = [&]() {
+    rx.clear(); tx.clear(); tick = 0; tx_budget = 10000; adc_fail = false;
+    GPIOB->input = ESTOP_SW_Pin; GPIOC->input = B1_Pin;
+    IoRuntime_Init(&adc, &uart); IoEnvironment_Init(&timer);
+    poll(); poll();
+  };
+  init(); CHECK(dht_service != nullptr);
+  tick = 100; poll(); poll(); poll();
+  CHECK(tx == "DOOR:CLOSED\nESTOP:OFF\nPRESSURE:2048\nTEMP:INVALID\nHUMIDITY:INVALID\n");
+  tx.clear(); tick = 2120; dht_result = DHT11_OK; poll(); poll(); poll();
+  CHECK(tx == "DOOR:CLOSED\nESTOP:OFF\nPRESSURE:2048\nTEMP:25.9\nHUMIDITY:45.2\n");
+  SensorState sensor;
+  std::istringstream lines(tx); std::string line;
+  while (std::getline(lines, line)) CHECK(AsciiProtocol::parseSensorLine(line, sensor));
+  CHECK(sensor.temperature_valid && sensor.humidity_valid);
+  CHECK(sensor.temperature == 25.9 && sensor.humidity == 45.2);
+  // No cached measurements repeated by the 100ms Door/E-Stop/Pressure refresh.
+  tx.clear(); tick += 100; poll(); poll();
+  CHECK(tx.find("TEMP:") == std::string::npos && tx.find("PRESSURE:2048") != std::string::npos);
+  for (auto result : {DHT11_RESPONSE_TIMEOUT, DHT11_DATA_TIMEOUT, DHT11_CHECKSUM_ERROR,
+                      DHT11_INVALID_DATA, DHT11_HAL_ERROR})
+  {
+    tx.clear(); tick += 2100; dht_result = result; poll(); poll(); poll();
+    CHECK(tx.find("TEMP:INVALID\nHUMIDITY:INVALID\n") != std::string::npos);
+    CHECK(tx.find("25.9") == std::string::npos);
+    tx.clear(); tick += 2100; dht_result = DHT11_OK; poll(); poll(); poll();
+    CHECK(tx.find("TEMP:25.9\nHUMIDITY:45.2\n") != std::string::npos);
+  }
+  // Deadline wrap and stale results while the sensor driver stops delivering.
+  init(); tick = UINT32_MAX - 2000; dht_result = DHT11_OK; poll(); poll(); poll();
+  tx.clear(); tick += 4999; poll(); poll(); poll();
+  CHECK(tx.find("TEMP:") == std::string::npos);
+  tx.clear(); tick += 100; poll(); poll(); poll();
+  CHECK(tx.find("TEMP:INVALID\nHUMIDITY:INVALID\n") != std::string::npos);
+  // TX stalls cannot replay old numeric samples on recovery.
+  init(); tx_budget = 0; tick = 2120; dht_result = DHT11_OK; poll();
+  tick += IO_ENVIRONMENT_TIMEOUT_MS; poll();
+  tx_budget = 10000; poll(); poll();
+  CHECK(tx.find("25.9") == std::string::npos);
+  CHECK(tx.find("TEMP:INVALID\nHUMIDITY:INVALID\n") != std::string::npos);
+  // Failure supersedes a partially transmitted previous result, without creating
+  // a valid truncated number when the blocked TX finally resumes.
+  init(); tick = 2120; dht_result = DHT11_OK; tx_budget = 44;
+  poll(); poll(); // Prefix ends partway through TEMP.
+  tick += 2100; dht_result = DHT11_CHECKSUM_ERROR; poll();
+  tx_budget = 10000; poll(); poll(); poll();
+  CHECK(tx.find("TEMP:25.9\n") == std::string::npos);
+  CHECK(tx.find("TEMP:INVALID\nHUMIDITY:INVALID\n") != std::string::npos);
+  // A capture crossing the control deadline cannot let queued ON refresh rescue it.
+  init(); send(AsciiProtocol::serializeDeviceState(DeviceState{}));
+  DeviceState active; active.pump_on = active.heater_on = active.run_led = true;
+  send(AsciiProtocol::serializeDeviceState(active));
+  tick = IO_CONTROL_TIMEOUT_MS - 1; dht_delay = 6;
+  for (auto c : AsciiProtocol::serializeDeviceState(active)) rx.push_back(c);
+  poll(); while (!rx.empty()) poll();
+  CHECK(io_runtime_failsafe_latched && !io_runtime_control_valid);
+  CHECK(!output(PUMP_LED_GPIO_Port, PUMP_LED_Pin));
+  CHECK(!output(HEATER_LED_GPIO_Port, HEATER_LED_Pin));
+  dht_init_result = DHT11_HAL_ERROR; init(); CHECK(dht_service == nullptr);
+  tick = 100; poll(); poll(); poll();
+  CHECK(tx.find("TEMP:INVALID\nHUMIDITY:INVALID\n") != std::string::npos);
+  std::cout << "STM32 DHT11 production adapter Host PASS\n";
+}
+
 int main(int argc, char **argv)
 {
+  if (argc == 2 && std::string(argv[1]) == "--environment")
+  { test_environment(); return 0; }
   if (argc == 2 && std::string(argv[1]) == "--failsafe")
   { test_communication_failsafe(); return 0; }
+  test_state_protocol();
+  test_reset_button();
+  rx.clear(); tx.clear(); tick = 0; tx_budget = 10000;
   ADC_HandleTypeDef adc{}; UART_HandleTypeDef uart{};
   for (auto &p : fake_gpio) p.output = 0xffff;
   IoRuntime_Init(&adc, &uart);
@@ -262,13 +405,14 @@ int main(int argc, char **argv)
   tx_budget = 10000; poll(); poll();
   CHECK(tx == "DOOR:CLOSED\nESTOP:OFF\nPRESSURE:2048\n");
   // Host-only integration: real STM32 serialization -> real Linux decisions -> real STM32 GPIO layer (fake HAL).
-  EquipmentController controller; SensorState sensors;
+  EquipmentController controller; SensorState sensors = normalSensors();
   auto consume = [&]() {
     std::istringstream lines(tx); std::string line;
     while (std::getline(lines, line))
     {
       CHECK(AsciiProtocol::parseSensorLine(line, sensors));
-      controller.setSensorState(sensors); controller.update();
+      controller.setSensorState(sensors); controller.checkSafety();
+      if (line.rfind("PRESSURE:", 0) == 0) controller.observeMeasurement(SensorKind::Pressure);
       send(AsciiProtocol::serializeDeviceState(controller.getDeviceState()));
     }
     tx.clear();
@@ -288,7 +432,7 @@ int main(int argc, char **argv)
   // Door-open and low-pressure faults through the same actual host/controller path.
   for (bool door_fault : {true, false})
   {
-    controller = EquipmentController{}; sensors = SensorState{};
+    controller = EquipmentController{}; sensors = normalSensors();
     sensors.pressure = 2048;
     controller.setSensorState(sensors);
     controller.handleCommand(Command{CommandType::Start});
@@ -296,8 +440,13 @@ int main(int argc, char **argv)
     GPIOB->input = ESTOP_SW_Pin | (door_fault ? DOOR_SW_Pin : 0);
     raw_adc = door_fault ? 2048 : 0;
     poll(); poll(); tick += 100; poll(); poll(); consume();
+    if (!door_fault)
+    {
+      CHECK(controller.getState() != EquipmentState::Error);
+      tick += 100; poll(); poll(); consume();
+    }
     CHECK(controller.getState() == EquipmentState::Error);
-    CHECK(controller.getAlarmCode() == (door_fault ? AlarmCode::DoorOpen : AlarmCode::PressureFault));
+    CHECK(controller.getAlarmCode() == (door_fault ? AlarmCode::DoorOpen : AlarmCode::PressureCritical));
     check_devices(controller.getDeviceState());
   }
   // ADC failure omits pressure, no fabricated zero or stale pressure report.

@@ -48,7 +48,7 @@ option(DHT11_HARDWARE_TEST "Build isolated DHT11 hardware verification harness" 
 if(STEPPER_HARDWARE_TEST AND DHT11_HARDWARE_TEST)
     message(FATAL_ERROR "Select only one isolated hardware test firmware")
 endif()
-set(IO_RUNTIME_SOURCE App/Src/io_runtime.c)
+set(IO_RUNTIME_SOURCE App/Src/io_runtime.c App/Src/io_environment.c)
 if(STEPPER_HARDWARE_TEST)
     # Preserve main.c and all CubeMX configuration. Substitute only the runtime
     # entry adapters in this explicit bench build; production uses the real file.
@@ -102,6 +102,7 @@ if(DHT11_HARDWARE_TEST)
 endif()
 
 if(STEPPER_HARDWARE_TEST)
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE STEPPER_HARDWARE_TEST=1)
     add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
         COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${CMAKE_PROJECT_NAME}>
             ${CMAKE_CURRENT_BINARY_DIR}/stepper-hardware-test.bin

@@ -12,6 +12,7 @@ typedef enum
   DEVICE_STATE_ERROR
 } DeviceStateLed;
 
+bool DeviceIo_ReadResetActive(void);
 bool DeviceIo_ReadDoorActive(void);
 bool DeviceIo_ReadEmergencyStopActive(void);
 
@@ -20,7 +21,7 @@ void DeviceIo_SetHeater(bool on);
 void DeviceIo_SetBuzzer(bool on);
 void DeviceIo_SetStateLed(DeviceStateLed state);
 
-/* Direct Linux RUN_LED / ERROR_LED outputs: green / red; blue off. */
+/* Communication safety indication only; normal RGB is owned by STATE. */
 void DeviceIo_SetIndicators(bool run, bool error);
 
 void DeviceIo_SetSafeState(void);

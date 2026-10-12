@@ -7,14 +7,14 @@ Sequence step: 0
 [TEST 2] Normal sequence
 After START state: 1
 Sequence step: 1
-Update 1 | state=1 | step=2 | pump=0 | heater=0 | run_led=0
+Update 1 | state=1 | step=2 | pump=1 | heater=0 | run_led=0
 Update 2 | state=1 | step=3 | pump=1 | heater=0 | run_led=0
-Update 3 | state=1 | step=4 | pump=1 | heater=0 | run_led=0
+Update 3 | state=1 | step=4 | pump=1 | heater=1 | run_led=0
 Update 4 | state=1 | step=5 | pump=1 | heater=1 | run_led=0
 Update 5 | state=1 | step=6 | pump=1 | heater=1 | run_led=0
 Update 6 | state=2 | step=7 | pump=1 | heater=1 | run_led=1
-Update 7 | state=2 | step=8 | pump=1 | heater=1 | run_led=1
-Update 8 | state=2 | step=9 | pump=1 | heater=1 | run_led=1
+Update 7 | state=0 | step=8 | pump=0 | heater=0 | run_led=0
+Update 8 | state=0 | step=9 | pump=0 | heater=0 | run_led=0
 Update 9 | state=0 | step=0 | pump=0 | heater=0 | run_led=0
 
 [TEST 3] Door open during RUN
@@ -22,12 +22,12 @@ Before fault | state=2 | step=7
 After fault | state=3 | step=0 | alarm=1 | pump=0 | heater=0 | run_led=0 | error_led=1 | buzzer=1
 
 [TEST 4] Pressure fault
-Before fault | state=1 | step=3 | pressure=60 | pump=1
-After fault | state=3 | step=0 | alarm=2 | pressure=40 | pump=0 | heater=0 | run_led=0 | error_led=1 | buzzer=1
+Before fault | state=1 | step=3 | pressure=2048 | pump=1
+After fault | state=3 | step=0 | alarm=9 | pressure=40 | pump=0 | heater=0 | run_led=0 | error_led=1 | buzzer=1
 
 [TEST 5] Over temperature
 Before fault | state=1 | step=5 | temperature=25 | pump=1 | heater=1
-After fault | state=3 | step=0 | alarm=3 | temperature=90 | pump=0 | heater=0 | run_led=0 | error_led=1 | buzzer=1
+After fault | state=3 | step=0 | alarm=7 | temperature=90 | pump=0 | heater=0 | run_led=0 | error_led=1 | buzzer=1
 
 [TEST 6] Motor fault during RUN
 Before fault | state=2 | step=7 | motor_fault=0

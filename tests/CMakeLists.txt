@@ -50,7 +50,7 @@ target_link_libraries(test_io_protocol PRIVATE stm32_io_protocol equipment_proto
 add_test(NAME STM32_PROTOCOL_CONTRACT COMMAND test_io_protocol)
 
 add_executable(test_io_runtime firmware/test_io_runtime.cpp
-  ${FIRMWARE_APP}/Src/io_runtime.c ${FIRMWARE_APP}/Src/device_io.c ${FIRMWARE_APP}/Src/pressure_adc.c)
+  ${FIRMWARE_APP}/Src/io_runtime.c ${FIRMWARE_APP}/Src/io_environment.c ${FIRMWARE_APP}/Src/device_io.c ${FIRMWARE_APP}/Src/pressure_adc.c)
 target_include_directories(test_io_runtime PRIVATE firmware/fakes ${FIRMWARE_APP}/../Core/Inc)
 target_link_libraries(test_io_runtime PRIVATE stm32_io_protocol equipment_protocol)
 add_test(NAME STM32_RUNTIME_HOST COMMAND test_io_runtime)
@@ -97,3 +97,22 @@ target_link_libraries(test_runtime_recovery PRIVATE controller_runtime util)
 target_link_options(test_runtime_recovery PRIVATE -Wl,--wrap=write)
 add_test(NAME LINUX_RUNTIME_RECOVERY_HOST COMMAND test_runtime_recovery)
 set_tests_properties(LINUX_RUNTIME_RECOVERY_HOST PROPERTIES TIMEOUT 10)
+
+add_executable(test_runtime_policy transport/test_runtime_policy.cpp)
+target_link_libraries(test_runtime_policy PRIVATE controller_runtime util)
+target_link_options(test_runtime_policy PRIVATE -Wl,--wrap=write)
+add_test(NAME LINUX_RUNTIME_POLICY_HOST COMMAND test_runtime_policy)
+set_tests_properties(LINUX_RUNTIME_POLICY_HOST PROPERTIES TIMEOUT 10)
+
+add_test(NAME STM32_DHT11_RUNTIME_HOST COMMAND test_io_runtime --environment)
+add_executable(test_runtime_environment transport/test_runtime_environment.cpp)
+target_link_libraries(test_runtime_environment PRIVATE controller_runtime stm32_io_protocol util)
+target_link_options(test_runtime_environment PRIVATE -Wl,--wrap=write)
+add_test(NAME LINUX_DHT11_RUNTIME_HOST COMMAND test_runtime_environment)
+set_tests_properties(STM32_DHT11_RUNTIME_HOST LINUX_DHT11_RUNTIME_HOST PROPERTIES TIMEOUT 10)
+
+add_executable(test_runtime_cycle transport/test_runtime_cycle.cpp)
+target_link_libraries(test_runtime_cycle PRIVATE controller_runtime util)
+target_link_options(test_runtime_cycle PRIVATE -Wl,--wrap=write)
+add_test(NAME LINUX_CYCLE_SAFETY_HOST COMMAND test_runtime_cycle)
+set_tests_properties(LINUX_CYCLE_SAFETY_HOST PROPERTIES TIMEOUT 10)

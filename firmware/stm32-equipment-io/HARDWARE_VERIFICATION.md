@@ -740,3 +740,59 @@ cmake --build --preset Debug
 
 Build만으로 보드 Firmware가 바뀌지 않습니다. 대상 보드를 확인한 뒤 사용자 결정으로
 `build/Debug/stm32-equipment-io.elf`를 Flash하고 Production 동작을 확인해야 복귀가 완료됩니다.
+
+
+## 16. Controller Runtime 실물 결과 — 2026-10-12 기록
+
+사용자가 이번 변경본의 HW Verification 결과로 전달한 관찰을 기록한다.
+에이전트가 직접 측정하거나 flash한 결과는 아니다. 기존 검증 기록은 유지한다.
+
+| 항목 | 입력 조건 | 실제 동작 | 측정 시간 | 사용자 판정 / 기록 |
+|---|---|---|---|---|
+| IDLE indication | 프로그램 실행, UART 연결 | RGB Blue | 측정 없음 | **PASS / HW VERIFIED** |
+| READY delay | Door CLOSED, E-Stop OFF | 5초 후 RGB Yellow | **5.02 s** | **PASS / HW VERIFIED** |
+| RUN duration | READY 상태에서 START, 정상 sequence 완료 | RUN Green 유지 후 자동 Shutdown | **30.1 s** | **PASS / HW VERIFIED** |
+
+측정 방법·오차·정확한 시작/종료 기준, 시험 시각, 실행 binary 식별 정보는 미제공이다.
+30.1 s는 보고된 실측값으로 유지하며 정확히 30.000 s를 입증한 것으로 기록하지 않는다.
+이번 보고는 대기/Shutdown 시 Pump·Heater 출력, Shutdown 후 IDLE Blue,
+조기 START 거부, Door/E-Stop fault, buzzer, B1 RESET, command-loss 재검증을 포함하지 않는다.
+해당 항목은 이번 변경본에서 미검증 상태를 유지한다.
+
+Production DHT11 온도/습도 경로 미연결 제한도 유지한다.
+사용자의 “정상 sequence 완료” 보고를 실제 DHT11 온도 확인 PASS로 확대하지 않는다.
+Stepper/OLED 상태는 변경하지 않았다.
+
+전체 체크리스트 및 남은 항목:
+[Controller runtime 정책 검증](../../docs/CONTROLLER_RUNTIME_POLICY.md).
+
+## 17. DHT11 운영 경로 연결 — Host 검증, HW 대기
+
+2026-10-12 후속 구현으로 production DHT11 temperature/humidity → UART → Linux
+SensorState → 1초 snapshot 경로를 연결했다. 앞선 절의 운영 경로 미연결 내용은
+그 관찰을 기록한 시점의 상태이며, 현재 구현/Host 검증 상태는 아래 보고서를 따른다.
+
+- 전체 CTest: **44/44 PASS** (기존 42개 포함).
+- STM32 production Debug 및 독립 DHT11/Stepper firmware build: PASS.
+- 실제 운영 DHT11 경로 및 UART capture hook: **HW 미검증**.
+- 기존 DHT11 독립 harness와 사용자 제공 IDLE/READY/RUN 실물 기록은 유지한다.
+  이 기록을 이번 운영 경로의 HW VERIFIED로 확대하지 않는다.
+
+[구현 경로, freshness/실패 정책, 테스트 및 실물 확인 항목](../../docs/DHT11_PRODUCTION_PATH.md).
+
+## 18. DHT11 운영 경로 사용자 관찰 및 후속 Cycle Safety — 2026-10-12 기록
+
+사용자가 후속 요청에 제공한 실제 HW 관찰:
+
+| 관찰 항목 | 사용자 제공 결과 | 기록 |
+|---|---|---|
+| Production TEMP/HUMIDITY UART 수신 | 실제 HW에서 수신 확인 | **PASS / HW VERIFIED (사용자 관찰)** |
+| Linux 1초 STATUS의 Temperature/Humidity | 실제값 표시 확인 | **PASS / HW VERIFIED (사용자 관찰)** |
+
+에이전트 직접 측정 결과가 아니다. 관찰 당시 binary 식별, 실제 수치, 측정 시각/오차는 미제공이다.
+이 두 항목을 DHT 오류/만료/복구, UART timing, 새 critical/sequence/re-arm 정책의 HW 검증으로
+확대하지 않는다. 앞선 DHT 운영 경로 HW 대기 기록은 당시 상태이며, 이 표가 제공된 관찰만 갱신한다.
+
+이후 구현한 [Cycle Safety 정책](../../docs/CYCLE_SAFETY_POLICY.md)은 Host **45/45 PASS**,
+STM32 Debug 및 기존 HW target build 확인 완료이고 **새 정책의 실물 검증은 대기**이다.
+기존 IDLE/READY/RUN 및 command-loss의 역사적 검증 기록은 유지한다.

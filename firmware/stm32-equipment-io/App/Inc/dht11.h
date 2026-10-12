@@ -27,6 +27,9 @@ Dht11Result Dht11_Request(void);
 Dht11Result Dht11_Poll(Dht11Sample *sample);
 /* Release a pending start; preserve the cooldown. */
 void Dht11_Cancel(void);
+/* Optional foreground service during pulse waits. Must be bounded to a few us,
+ * non-blocking, and must not modify PC4/TIM5 or call back into this driver. */
+void Dht11_SetServiceHook(void (*service)(void));
 
 #ifdef __cplusplus
 }

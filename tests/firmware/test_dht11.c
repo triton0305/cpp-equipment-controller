@@ -17,6 +17,8 @@ static bool stopped;
 static HAL_StatusTypeDef start_result;
 enum { LINE_HIGH, LINE_LOW, RESPONSE_ONLY, BAD_FIRST_BIT, FRAME_BAD_HUMIDITY, FRAME_BAD_CHECKSUM, FRAME_FRACTIONAL_OK };
 static int signal_kind;
+static unsigned service_calls;
+static void service_hook(void) { ++service_calls; counter += 2U; }
 uint32_t HAL_GetTick(void) { if (stopped) ++tick; return tick; }
 uint32_t fake_dht11_counter(void) { if (!stopped) ++counter; return counter; }
 HAL_StatusTypeDef HAL_TIM_Base_Start(TIM_HandleTypeDef *timer)
@@ -46,7 +48,6 @@ GPIO_PinState HAL_GPIO_ReadPin(GPIO_TypeDef *port, uint16_t pin)
   if (elapsed < 15U) return GPIO_PIN_SET;
   if (elapsed < 95U) return GPIO_PIN_RESET;
   if (elapsed < 175U) return GPIO_PIN_SET;
-#ifdef DHT11_HARDWARE_TEST
   /* Deterministic frames verify complete RAW diagnostics and fractional samples. */
   if (signal_kind >= FRAME_BAD_HUMIDITY && signal_kind <= FRAME_FRACTIONAL_OK)
   {
@@ -63,7 +64,6 @@ GPIO_PinState HAL_GPIO_ReadPin(GPIO_TypeDef *port, uint16_t pin)
     }
     return elapsed < edge + 50U ? GPIO_PIN_RESET : GPIO_PIN_SET;
   }
-#endif
   if (signal_kind == BAD_FIRST_BIT && elapsed >= 225U && elapsed < 273U)
     return GPIO_PIN_SET;
   return GPIO_PIN_RESET;
@@ -240,6 +240,17 @@ int main(void)
     CHECK(strstr(debug_output, "PULSE_US=") == NULL);
   }
 #endif
+  // Production capture tolerates a short UART servicing hook without losing a frame.
+  CHECK(Dht11_Init(&timer) == DHT11_OK);
+  Dht11_SetServiceHook(service_hook);
+  signal_kind = FRAME_FRACTIONAL_OK;
+  tick += DHT11_STABILIZE_MS;
+  CHECK(Dht11_Request() == DHT11_BUSY);
+  tick += DHT11_START_LOW_MS;
+  CHECK(Dht11_Poll(&sample) == DHT11_OK);
+  CHECK(sample.temperature_tenths_c == 259 && sample.humidity_tenths_percent == 452);
+  CHECK(service_calls > 0);
+  Dht11_SetServiceHook(NULL);
   puts("DHT11 lifecycle and timeout handling: PASS");
   return 0;
 }

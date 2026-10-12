@@ -15,8 +15,12 @@ public:
   EquipmentController();
 
   void handleCommand(const Command& command);
-  void update();
+  // Runtime supplies completion only after its non-blocking RUN deadline.
+  void update(bool process_complete = true);
 
+  // These paths never advance the process. Observe exactly once per received measurement.
+  void checkSafety();
+  void observeMeasurement(SensorKind kind);
   void setSensorState(const SensorState& sensor_state);
   void setLogger(Logger* logger);
 
@@ -28,10 +32,13 @@ public:
   const DeviceState& getDeviceState() const;
 
 private:
+  struct CriticalCounter { int condition = 0; unsigned count = 0; };
+  CriticalCounter critical_[3]{};
+  void clearCritical();
   void handleStart();
   void handleStop();
   void handleReset();
-  void advanceSequence();
+  void advanceSequence(bool process_complete);
   void checkInterlocks();
   void enterError(AlarmCode alarm_code);
 

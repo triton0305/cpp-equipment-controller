@@ -25,7 +25,7 @@ int main()
   for (unsigned bits = 0; bits < 4; ++bits)
     for (uint16_t raw : {0, 2048, 4095})
     {
-      IoSensors s{bool(bits & 1), bool(bits & 2), true, raw}; char packet[64];
+      IoSensors s{bool(bits & 1), bool(bits & 2), true, raw, false, false, 0, 0}; char packet[64];
       auto n = IoProtocol_Serialize(&s, packet, sizeof(packet)); CHECK(n > 0);
       SensorState linux_sensor;
       std::istringstream lines(std::string(packet, n)); std::string line;
@@ -34,7 +34,7 @@ int main()
       CHECK(linux_sensor.emergency_stop == s.estop);
       CHECK(linux_sensor.pressure == raw);
     }
-  IoLineReader reader{}; IoCommand command{IO_HEATER, true};
+  IoLineReader reader{}; IoCommand command{IO_HEATER, true, IO_STATE_SAFE};
   auto feed = [&](const std::string &s) { unsigned n = 0; for (unsigned char c : s) n += IoProtocol_Feed(&reader, c, &command); return n; };
   for (auto bad : {"", "pump:ON", "PUMP:ONx", "PUMP: ON", "VALVE:ON", "TEMP:25", "RUN_LED:OFF\rX"})
     CHECK(feed(std::string(bad) + "\n") == 0);
@@ -45,10 +45,24 @@ int main()
   CHECK(feed("PUMP:OFF\n") == 1 && !command.on);
   CHECK(feed("PUMP:") == 0); IoProtocol_Discard(&reader);
   CHECK(feed("ON\n") == 0); CHECK(feed("HEATER:ON\n") == 1);
-  IoSensors s{false, true, false, 0}; char out[64];
+  IoSensors s{false, true, false, 0, false, false, 0, 0}; char out[64];
   CHECK(IoProtocol_Serialize(&s, out, sizeof(out)) > 0);
   CHECK(std::string(out) == "DOOR:OPEN\nESTOP:ON\n");
   CHECK(IoProtocol_Serialize(&s, out, 4) == 0);
   s.pressure_valid = true; s.pressure = 4096;
   CHECK(IoProtocol_Serialize(&s, out, sizeof(out)) == 0);
+  // Actual firmware packet -> actual Linux parser, including signed fractional values.
+  s = IoSensors{}; s.environment_present = s.environment_valid = true;
+  s.temperature_tenths_c = -1; s.humidity_tenths_percent = 452;
+  CHECK(IoProtocol_Serialize(&s, out, sizeof(out)) > 0);
+  CHECK(std::string(out).find("TEMP:-0.1\nHUMIDITY:45.2\n") != std::string::npos);
+  CHECK(IoProtocol_Serialize(&s, out, 30) == 0);
+  s.temperature_tenths_c = 601;
+  CHECK(IoProtocol_Serialize(&s, out, sizeof(out)) == 0);
+  s.temperature_tenths_c = 250; s.humidity_tenths_percent = 951;
+  CHECK(IoProtocol_Serialize(&s, out, sizeof(out)) == 0);
+  s.environment_valid = false;
+  CHECK(IoProtocol_Serialize(&s, out, sizeof(out)) > 0);
+  CHECK(std::string(out).find("TEMP:INVALID\nHUMIDITY:INVALID\n") != std::string::npos);
+
 }

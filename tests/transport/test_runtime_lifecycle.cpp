@@ -206,34 +206,25 @@ int main(int argc, char* argv[])
             stderrText.find("UART write failed") == std::string::npos,
             "Unexpected UART failure\n" + stderrText);
 
-    std::vector<std::string> accepted;
-    int stateLines = 0;
+    int statusLines = 0;
     std::istringstream stream(stdoutText);
     std::string line;
     while (std::getline(stream, line))
     {
-      if (line.rfind("SENSOR accepted:", 0) == 0)
-      {
-        accepted.push_back(line);
-      }
-      if (line.rfind("Controller state:", 0) == 0)
-      {
-        ++stateLines;
-      }
+      require(line.rfind("STATUS ", 0) == 0,
+              "Unexpected per-sensor console output: " + line);
+      ++statusLines;
+      require(line.find("Humidity=unavailable") != std::string::npos,
+              "Missing explicit unavailable humidity");
+      require(line.find("Pump=0 Heater=0") != std::string::npos,
+              "Idle/fault outputs must remain safe");
     }
-
-    require(accepted.size() == messages.size(),
-            "Expected exactly five sensor acceptance lines\n" + stdoutText);
-    for (const auto& message : messages)
-    {
-      require(std::count(accepted.begin(), accepted.end(),
-                "SENSOR accepted: " + message) == 1,
-              "Expected one acceptance for " + message + "\n" + stdoutText);
-    }
-    require(stateLines == 5, "Expected five controller state lines\n" + stdoutText);
-
-    std::cout << "[TEST 28] Runtime lifecycle PASS: five sensor acceptances, "
-              << "five state lines, stale fault, alive beyond 10 seconds, SIGTERM exit code 0\n";
+    require(statusLines >= 9 && statusLines <= 11,
+            "Expected approximately one snapshot/second, got " + std::to_string(statusLines));
+    require(stderrText.find("EVENT UART connected/reconnected") != std::string::npos,
+            "Missing immediate connection event");
+    std::cout << "[TEST 28] Runtime lifecycle PASS: throttled snapshots, "
+              << "stale fault, alive beyond 10 seconds, SIGTERM exit code 0\n";
     return 0;
   }
   catch (const std::exception& error)

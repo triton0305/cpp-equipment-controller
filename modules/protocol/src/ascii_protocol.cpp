@@ -18,48 +18,52 @@ bool AsciiProtocol::parseSensorLine(
   const std::string key = line.substr(0, pos);
   const std::string value = line.substr(pos + 1);
 
-  if (value.empty())
+  // Explicit invalid reports are protocol messages, never numeric measurements.
+  if (key == "TEMP" || key == "HUMIDITY")
   {
-    return false;
-  }
-
-  // Temperature
-  if (key == "TEMP")
-  {
+    bool& valid = key == "TEMP" ? sensor.temperature_valid : sensor.humidity_valid;
+    valid = false;
+    if (value == "INVALID") return true;
+    if (value.empty() || value.find_first_not_of("-+0123456789.") != std::string::npos)
+      return false;
     try
     {
       std::size_t consumed = 0;
-      const double temperature = std::stod(value, &consumed);
-
-      if (consumed != value.size() ||
-          !std::isfinite(temperature))
-      {
+      const double measurement = std::stod(value, &consumed);
+      if (consumed != value.size() || !std::isfinite(measurement) ||
+          (key == "HUMIDITY" && (measurement < 0.0 || measurement > 100.0)))
         return false;
-      }
-
-      sensor.temperature = temperature;
+      if (key == "TEMP") sensor.temperature = measurement;
+      else sensor.humidity = measurement;
+      valid = true;
       return true;
     }
-    catch (const std::exception&)
-    {
-      return false;
-    }
+    catch (const std::exception&) { return false; }
+  }
+
+  if (value.empty())
+  {
+    if (key == "PRESSURE") sensor.pressure_valid = false;
+    return false;
   }
 
   // Pressure
   if (key == "PRESSURE")
   {
+    sensor.pressure_valid = false;
+    if (value == "INVALID") return true;
     try
     {
       std::size_t consumed = 0;
       const int pressure = std::stoi(value, &consumed);
 
-      if (consumed != value.size())
+      if (consumed != value.size() || pressure < 0 || pressure > 4095)
       {
         return false;
       }
 
       sensor.pressure = pressure;
+      sensor.pressure_valid = true;
       return true;
     }
     catch (const std::exception&)

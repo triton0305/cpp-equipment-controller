@@ -25,6 +25,9 @@
 #include "dht11_hardware_test.h"
 #else
 #include "io_runtime.h"
+#ifndef STEPPER_HARDWARE_TEST
+#include "io_environment.h"
+#endif
 #endif
 
 /* USER CODE END Includes */
@@ -111,6 +114,9 @@ int main(void)
   Dht11HardwareTest_Init(&htim5, &huart2);
 #else
   IoRuntime_Init(&hadc1, &huart2);
+#ifndef STEPPER_HARDWARE_TEST
+  IoEnvironment_Init(&htim5);
+#endif
 #endif
 
   /* USER CODE END 2 */

@@ -1,3 +1,4 @@
+#include "../core/test_sensor_state.hpp"
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -67,6 +68,8 @@ int main()
       logger.log(LogLevel::Error, "Error test");
 
       EquipmentController controller;
+
+      controller.setSensorState(normalSensors());
       controller.setLogger(&logger);
       controller.handleCommand(Command{CommandType::Start});
       for (int i = 0; i < 6; ++i)
@@ -80,7 +83,7 @@ int main()
         controller.update();
       }
 
-      SensorState sensor;
+      SensorState sensor = normalSensors();
       sensor.emergency_stop = true;
       controller.setSensorState(sensor);
       controller.update();

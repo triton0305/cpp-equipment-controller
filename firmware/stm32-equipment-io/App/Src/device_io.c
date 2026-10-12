@@ -2,6 +2,11 @@
 
 #include "main.h"
 
+bool DeviceIo_ReadResetActive(void)
+{
+  return HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin) == GPIO_PIN_RESET;
+}
+
 bool DeviceIo_ReadDoorActive(void)
 {
   return HAL_GPIO_ReadPin(DOOR_SW_GPIO_Port, DOOR_SW_Pin) == GPIO_PIN_RESET;

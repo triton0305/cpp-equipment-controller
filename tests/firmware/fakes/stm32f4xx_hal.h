@@ -44,4 +44,10 @@ uint32_t HAL_GetTick(void);
 #define GPIO_PIN_13 (1U << 13)
 #define GPIO_PIN_14 (1U << 14)
 #define GPIO_PIN_15 (1U << 15)
+typedef struct { unsigned unused; } TIM_TypeDef;
+extern TIM_TypeDef fake_tim5;
+#define TIM5 (&fake_tim5)
+#define TIM_COUNTERMODE_UP 0U
+typedef struct { uint32_t Prescaler, Period, CounterMode; } TIM_Base_InitTypeDef;
+typedef struct { TIM_TypeDef *Instance; TIM_Base_InitTypeDef Init; } TIM_HandleTypeDef;
 #endif

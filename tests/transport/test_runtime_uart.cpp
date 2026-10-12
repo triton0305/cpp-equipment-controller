@@ -55,7 +55,13 @@ int main(int argc, char* argv[])
   // Opening sends a safe refresh before accepting fresh sensor input.
   std::string opening;
   const std::string opening_expected =
-    "\nPUMP:OFF\nHEATER:OFF\nVALVE:CLOSED\nBUZZER:OFF\nRUN_LED:OFF\nERROR_LED:OFF\n";
+    "\nPUMP:OFF\n"
+    "HEATER:OFF\n"
+    "VALVE:CLOSED\n"
+    "BUZZER:OFF\n"
+    "RUN_LED:OFF\n"
+    "ERROR_LED:OFF\n"
+    "STATE:SAFE\n";
   const auto opened_by = std::chrono::steady_clock::now() + std::chrono::seconds(2);
   while (opening.size() < opening_expected.size() && std::chrono::steady_clock::now() < opened_by)
   {
@@ -96,7 +102,8 @@ int main(int argc, char* argv[])
     "VALVE:CLOSED\n"
     "BUZZER:OFF\n"
     "RUN_LED:OFF\n"
-    "ERROR_LED:OFF\n";
+    "ERROR_LED:OFF\n"
+    "STATE:IDLE\n";
   const std::size_t expected_size = expected.size() * 5;
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
 

@@ -6,5 +6,7 @@
 void UartIo_Init(UART_HandleTypeDef *uart);
 /* 1 = byte, 0 = none, -1 = receive error (partial line must be discarded). */
 int UartIo_TryRead(uint8_t *byte);
+/* Foreground capture hook: buffers at most one hardware byte, no parsing/TX. */
+void UartIo_BufferRx(void);
 bool UartIo_TryWrite(uint8_t byte);
 #endif
