@@ -11,7 +11,13 @@
 </p>
 
 <p align="center">
-  <a href="#validation">Validation</a> · <a href="#demo">Demo</a> · <a href="#architecture">Architecture</a> · <a href="#state--sequence">State / Sequence</a> · <a href="#interlock--fault">Interlock / Fault</a> · <a href="#build">Build</a>
+  <a href="#development-process">Development Process</a> ·
+  <a href="#troubleshooting">Troubleshooting</a> ·
+  <a href="#validation">Validation</a> ·
+  <a href="#demo">Demo</a> ·
+  <a href="#architecture">Architecture</a> ·
+  <a href="#state--sequence">State / Sequence</a> ·
+  <a href="#build">Build</a>
 </p>
 
 # Equipment Controller
@@ -33,7 +39,18 @@ Linux / WSL에서 State Machine, Sequence, Alarm과 출력 상태를 관리합�
 
 READY qualification, 30초 RUN, 단계별 Pump / Heater Sequence, Door re-arm, Critical Sensor Safety, RESET 정책과 UART Recovery는 실제 장비 동작과 실행 로그를 기준으로 설계·수정했습니다.
 
-- [Design Process & AI Collaboration](EQUIPMENT_CONTROLLER_DESIGN_PROCESS.md) — 설계 의사결정, 사용자 · ChatGPT · Codex 역할 분담 및 검증 과정
+- [Design Process & AI Collaboration](docs/DESIGN_PROCESS.md) — 설계 의사결정, 사용자 · ChatGPT · Codex 역할 분담 및 검증 과정
+
+## Troubleshooting
+
+개발 과정에서 통신 장애, 센서 데이터 해석, Sequence 진행과 실제 Safety 동작을 재현하고 원인을 계층별로 추적했습니다.
+
+- **STM32 Command-loss Fail-safe** — Linux/UART 명령이 끊긴 상태에서 마지막 ON 출력이 유지될 수 있는 문제를 STM32 local timeout · latch · safe resynchronization 구조로 보완하고 실제 보드에서 출력 차단을 확인했습니다.
+- **DHT11 Decoder** — 정상 40-bit frame과 checksum까지 확인한 뒤 humidity decimal 처리 조건이 `INVALID_DATA`의 원인임을 특정하고 수정했습니다.
+- **Sequence Transition** — 여러 Sensor line이 한 번에 수신될 때 Sequence가 여러 단계 진행되는 문제를 Sensor ingestion과 state transition 분리 및 one-poll-one-step 방식으로 수정했습니다.
+- **Physical Safety E2E** — 실제 Door / E-Stop 입력에서 Controller ERROR 전환과 Pump / Heater 안전 출력이 일치하는지 실물 장비에서 재검증했습니다.
+
+[▶ Troubleshooting 상세 기록](docs/TROUBLESHOOTING.md)
 
 ## Validation
 
@@ -459,3 +476,5 @@ Pressure와 DHT11 Temperature / Humidity는 각 센서의 유효성을 함께 �
 | [Cycle Safety Policy](docs/CYCLE_SAFETY_POLICY.md) | Sequence 단계화 · 30초 RUN · Cycle Re-arm · Critical Sensor Safety · 45/45 Host 검증 |
 | [DHT11 Production Path](docs/DHT11_PRODUCTION_PATH.md) | DHT11 Driver · STM32 Production 통합 · UART TEMP / HUMIDITY · Linux SensorState / STATUS 경로 |
 | [Communication Safety Phase 2](docs/COMMUNICATION_SAFETY_PHASE2.md) | Linux UART Recovery · Sensor stale · 재연결 · 안전 재동기화 정책 |
+| [Design Process & AI Collaboration](docs/DESIGN_PROCESS.md) | 설계 의사결정 · 사용자 / ChatGPT / Codex 역할 분담 · 검증 과정 |
+| [Troubleshooting](docs/TROUBLESHOOTING.md) | Communication · DHT11 · Sequence · Safety · Hardware 문제의 원인 추적 및 검증 기록 |
