@@ -27,6 +27,14 @@ Linux / WSL에서 State Machine, Sequence, Alarm과 출력 상태를 관리합�
 | [2026.10.08](https://github.com/triton0305/equipment-controller/commit/c5d6953605a620da03defa46681c7e653f1c9e39) | C++ Controller · State / Sequence · Logging · ASCII Protocol / Serial Transport · STM32 GPIO / ADC / UART Runtime 구현 · 초기 Fault 처리 및 실제 보드 E2E 검증 |
 | [2026.10.12](https://github.com/triton0305/equipment-controller/commit/b2217e9) | DHT11 Production 통합 · STM32 Command-loss Fail-safe · Linux UART Recovery · 5초 READY qualification · 30초 RUN · Cycle Re-arm · Critical Sensor Safety · CTest 45/45 PASS · 주요 Hardware Verification |
 
+## Development Process
+
+장비 운용 시나리오와 안전 정책을 먼저 정하고, ChatGPT와 State Machine · Sequence · Interlock · Runtime 동작을 검토했습니다. 확정된 요구사항은 Codex를 통해 C++ Controller와 STM32 Firmware에 구현하고, Host regression test와 실제 NUCLEO-F411RE 하드웨어 검증으로 결과를 확인했습니다.
+
+READY qualification, 30초 RUN, 단계별 Pump / Heater Sequence, Door re-arm, Critical Sensor Safety, RESET 정책과 UART Recovery는 실제 장비 동작과 실행 로그를 기준으로 설계·수정했습니다.
+
+- [Design Process & AI Collaboration](EQUIPMENT_CONTROLLER_DESIGN_PROCESS.md) — 설계 의사결정, 사용자 · ChatGPT · Codex 역할 분담 및 검증 과정
+
 ## Validation
 
 NUCLEO-F411RE와 WSL을 연결해 **실제 센서 입력 → STM32 → UART → C++ Controller → UART → GPIO 출력** 경로를 검증했습니다. 최신 Software Verification은 **CTest 45/45 PASS**이며, 실제 보드에서는 DHT11 Production 경로와 READY / RUN / Cycle Re-arm, E-Stop·Door Interlock, Pressure Critical, B1 RESET 동작을 확인했습니다.
