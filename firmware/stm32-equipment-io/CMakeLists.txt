@@ -45,6 +45,8 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
+    App/Src/dht11.c
+    App/Src/dht11_frame.c
     App/Src/device_io.c
     App/Src/pressure_adc.c
     App/Src/io_protocol.c

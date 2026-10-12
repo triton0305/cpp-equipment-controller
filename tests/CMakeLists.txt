@@ -58,3 +58,14 @@ add_test(NAME STM32_RUNTIME_HOST COMMAND test_io_runtime)
 add_executable(test_uart_io firmware/test_uart_io.c ${FIRMWARE_APP}/Src/uart_io.c)
 target_include_directories(test_uart_io PRIVATE firmware/fakes ${FIRMWARE_APP}/Inc)
 add_test(NAME STM32_UART_ADAPTER_HOST COMMAND test_uart_io)
+
+add_executable(test_dht11_frame firmware/test_dht11_frame.c ${FIRMWARE_APP}/Src/dht11_frame.c)
+target_include_directories(test_dht11_frame PRIVATE ${FIRMWARE_APP}/Inc)
+add_test(NAME STM32_DHT11_DECODE_HOST COMMAND test_dht11_frame)
+
+add_executable(test_dht11 firmware/test_dht11.c
+  ${FIRMWARE_APP}/Src/dht11.c ${FIRMWARE_APP}/Src/dht11_frame.c)
+target_include_directories(test_dht11 PRIVATE firmware/dht11_fakes
+  ${FIRMWARE_APP}/Inc ${FIRMWARE_APP}/../Core/Inc)
+add_test(NAME STM32_DHT11_DRIVER_HOST COMMAND test_dht11)
+set_tests_properties(STM32_DHT11_DECODE_HOST STM32_DHT11_DRIVER_HOST PROPERTIES TIMEOUT 5)
