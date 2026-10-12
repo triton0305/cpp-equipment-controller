@@ -41,14 +41,13 @@ READY qualification, 30초 RUN, 단계별 Pump / Heater Sequence, Door re-arm, C
 
 ## Troubleshooting
 
-개발 과정에서 통신 장애, 센서 데이터 해석, Sequence 진행과 실제 Safety 동작을 재현하고 원인을 계층별로 추적했습니다.
+Equipment Controller를 개발하면서 UART 통신, DHT11 센서 처리, Sequence 진행, Safety 제어와 실제 하드웨어 검증 과정에서 발생한 문제와 해결 과정을 정리했습니다.
 
-- **STM32 Command-loss Fail-safe** — Linux/UART 명령이 끊긴 상태에서 마지막 ON 출력이 유지될 수 있는 문제를 STM32 local timeout · latch · safe resynchronization 구조로 보완하고 실제 보드에서 출력 차단을 확인했습니다.
-- **DHT11 Decoder** — 정상 40-bit frame과 checksum까지 확인한 뒤 humidity decimal 처리 조건이 `INVALID_DATA`의 원인임을 특정하고 수정했습니다.
-- **Sequence Transition** — 여러 Sensor line이 한 번에 수신될 때 Sequence가 여러 단계 진행되는 문제를 Sensor ingestion과 state transition 분리 및 one-poll-one-step 방식으로 수정했습니다.
-- **Physical Safety E2E** — 실제 Door / E-Stop 입력에서 Controller ERROR 전환과 Pump / Heater 안전 출력이 일치하는지 실물 장비에서 재검증했습니다.
+STM32 Command-loss Fail-safe, Linux UART Disconnect / Reconnect, DHT11 Decoder, Production Firmware 불일치, Sequence Transition, E-Stop / Door E2E, OLED와 Stepper Hardware Investigation을 중심으로 주요 사례를 정리했습니다.
 
-[▶ Troubleshooting 상세 기록](docs/TROUBLESHOOTING.md)
+▶ [Troubleshooting](docs/TROUBLESHOOTING.md) — 주요 문제의 증상, 원인 분석, 조치 및 검증 결과
+
+▶ [Troubleshooting Archive](docs/TROUBLESHOOTING_ARCHIVE.md) — 개발 과정에서 수집한 전체 트러블슈팅 기록
 
 ## Validation
 
