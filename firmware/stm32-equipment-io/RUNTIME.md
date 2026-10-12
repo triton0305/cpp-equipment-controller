@@ -6,8 +6,8 @@
 실물 보드 검증 결과는 [HARDWARE_VERIFICATION.md](HARDWARE_VERIFICATION.md)에 정리했습니다.  
 RUN 상태 E-Stop E2E를 포함한 실제 입력·출력 검증 결과를 확인할 수 있습니다.
 
-**최신 변경:** Communication Safety Phase 1은 Host 검증 완료 / Hardware 미검증입니다.
-기존 HW VERIFIED 기록은 이전 동작에 대한 결과이며 신규 fail-safe 검증을 의미하지 않습니다.
+**최신 변경:** Communication Safety Phase 1은 Host 검증 및 command-loss 물리 출력 동작의 Hardware 검증을 완료했습니다.
+정확한 1000 ms physical latency는 계측 장비로 측정하지 않았습니다.
 현재 정책과 검증 결과는 [12절](#12-communication-safety-phase-1--2026-10-12)에 기록합니다.
 
 ## 1. 검증 개요
@@ -683,7 +683,18 @@ Harness 비활성화는 기본 Debug/Release Preset 또는 `-DDHT11_HARDWARE_TES
 
 ## 12. Communication Safety Phase 1 — 2026-10-12
 
-**HOST VERIFIED / HARDWARE NOT YET VERIFIED**
+**HOST VERIFIED / STM32 COMMAND-LOSS FAIL-SAFE — HW VERIFIED**
+
+Production Firmware를 다시 Flash한 NUCLEO-F411RE에서 사용자가 확인한 결과를 반영했습니다.
+약 100 ms 간격의 ON complete refresh를 약 5초 유지한 뒤 송신 중단에 따른 출력 차단,
+unsafe ON complete refresh 거부, safe complete refresh로 재동기화,
+이후 별도 ON complete refresh로 재활성화 및 두 번째 송신 중단에 따른 차단을 확인했습니다.
+Pump / Heater / RUN Green의 실제 관찰 순서는 **OFF → ON → OFF → OFF → OFF → ON → OFF**입니다.
+
+- **Physical fail-safe behavior: HW VERIFIED**
+- **Exact timeout latency: NOT INSTRUMENT-MEASURED**
+
+시험 조건, 단계별 결과 및 검증 범위는 [Hardware Verification 14절](HARDWARE_VERIFICATION.md#14-communication-safety-phase-1-hardware-verification--2026-10-12)에 기록했습니다.
 
 시작 기준: `main`, HEAD/origin/main `e7acaee`, Working Tree clean, 기존 CTest 37개.
 Linux의 State Machine/Sequence/Fault/Interlock 판단은 그대로 두고 STM32에 통신 유효성 및 물리 출력 차단만 추가했습니다.
@@ -798,7 +809,8 @@ git diff --check
 
 결과: **38/38 CTest PASS** (기존 37개 유지 + 신규 1개), Linux/STM32 Host Build PASS,
 Production ARM Debug Build/Link PASS (FLASH 20,104 B / RAM 2,160 B), `git diff --check` PASS.
-기존 Protocol/Runtime/Controller/UART/DHT11 테스트 회귀 없음. Hardware Test/Flash는 수행하지 않았습니다.
+기존 Protocol/Runtime/Controller/UART/DHT11 테스트 회귀 없음. 구현 및 Host 검증 단계에서는 Hardware Test/Flash를 수행하지 않았습니다.
+이후 사용자가 수행한 Production Flash 및 command-loss 물리 출력 검증 결과는 위 Hardware 판정에 반영했습니다.
 
 ### 현재 한계와 별도 Hardware Verification
 
@@ -813,14 +825,17 @@ HAL Tick 정지, MCU/foreground 정지에는 이 소프트웨어 timeout이 동�
 UART는 SR/DR polling으로 IRQ/DMA ring buffer가 없어 Poll 지연에 따른 ORE 가능성이 남습니다.
 이 제약 해결 및 Linux stale/reconnect/session/ACK/atomic protocol은 후속 범위입니다.
 
-별도 Hardware 단계에서 다음을 확인합니다:
+이번 Hardware 시험에서는 command 송신 중단 후 Pump/Heater/RUN OFF, Timeout latch,
+unsafe ON complete 거부, safe complete 재동기화, 이후 별도 complete에서 ON 복구 및 반복 차단을 확인했습니다.
+WSL USB/VCP detach/attach와 `/dev/ttyACM0` disappearance/reappearance도 확인했지만,
+Linux automatic reconnect 또는 full production-controller disconnect/reconnect E2E 검증으로 해석하지 않습니다.
 
-1. Production Firmware 선택, MCU 전원 유지 및 안전한 시험 출력 구성.
-2. Pump/Heater/RUN ON 후 Linux↔STM32 분리/송신 중단 시 실제 GPIO OFF.
-3. 마지막 complete refresh부터 차단까지 실측 시간 및 최장 Poll 지연.
-4. 정상 부하/USB scheduling jitter에서 1000/250 ms의 여유와 ORE/오동작 여부.
-5. LED만 반복·부분/늦은 ON·unsafe complete 재수신 중 차단 유지.
-6. safe complete에서 출력 OFF로 동기화, 이후 별도 complete에서만 ON.
-7. ERROR/Buzzer 유지, Valve coil OFF, 기존 Door/E-Stop/ADC/UART 회귀.
+후속 Hardware 확인 항목은 정확한 차단 latency 및 최장 Poll 지연 계측,
+USB scheduling jitter/ORE와 1000/250 ms 여유, LED만 반복·부분/늦은 ON 시험,
+ERROR/Buzzer 유지·Valve coil OFF 및 기존 Door/E-Stop/ADC/UART 회귀입니다.
+Linux automatic reconnect, CommunicationFault propagation, Sensor stale detection,
+Session/Sequence/ACK 및 full production-controller disconnect/reconnect E2E는 이번 검증 범위에 포함하지 않습니다.
 
-DHT11 Driver의 기존 HW VERIFIED 기록은 유지하며 이번 통신 fail-safe에는 새 Hardware 판정을 부여하지 않습니다.
+DHT11 Driver와 기존 Door/E-Stop 등의 HW VERIFIED 기록은 유지합니다.
+
+**[STM32 COMMAND-LOSS FAIL-SAFE — HW VERIFIED]**

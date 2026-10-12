@@ -516,3 +516,79 @@ RESPONSE_TIMEOUT / DATA_TIMEOUT / CHECKSUM_ERROR의 실제 Sensor 오류 시험�
 **DHT11 Driver: PASS / HW VERIFIED**
 
 **[DHT11 DRIVER — HW VERIFIED]**
+
+---
+
+## 14. Communication Safety Phase 1 Hardware Verification — 2026-10-12
+
+사용자가 실제 NUCLEO-F411RE에서 수행한 command-loss 시험 결과를 기록했습니다.
+검증 문서 업데이트 기준은 HEAD/origin/main `451c19c` (`feat(stm32): add command-loss fail-safe`), Working Tree clean입니다.
+
+### 시험 조건
+
+- **Board:** NUCLEO-F411RE / STM32F411RET6
+- **Firmware:** Production Firmware를 다시 Flash한 뒤 시험
+- **Host / Device:** WSL / USB・VCP / `/dev/ttyACM0`
+- **Control refresh:** 기존 Protocol의 complete refresh 사용, ON 반복 송신 간격 약 100 ms
+- **관찰 출력:** Pump / Heater / RUN Green
+- **설정값:** Refresh window 250 ms, communication timeout 1000 ms
+
+MCU의 Production Runtime에서 command 송신 중단과 timeout/latch/resynchronization에 따른 물리 출력 동작을 확인했습니다.
+정확한 1000 ms physical latency는 계측 장비로 측정하지 않았습니다.
+
+### 실제 관찰 결과
+
+| 단계 | 시험 | Pump / Heater / RUN Green 실제 결과 |
+|---|---|---|
+| 1 | Safe complete refresh 송신 | **OFF / OFF / OFF** |
+| 2 | 정상 ON complete refresh를 약 100 ms 간격으로 반복 | **ON / ON / ON**, 약 5초 유지 확인 |
+| 3 | Control command 송신 중단 | Timeout 후 **OFF / OFF / OFF** |
+| 4 | Timeout latch 상태에서 unsafe ON complete refresh 송신 | **OFF / OFF / OFF** 유지 |
+| 5 | Safe complete refresh 송신 | **OFF / OFF / OFF** 유지, latch 해제 |
+| 6 | 이후 별도의 정상 ON complete refresh 반복 | **ON / ON / ON**, 약 5초 유지 확인 |
+| 7 | 다시 command 송신 중단 | **OFF / OFF / OFF** 재확인 |
+
+사용자가 보고한 관찰 순서:
+
+```text
+1 OFF
+2 ON
+3 OFF
+4 OFF
+5 OFF
+6 ON
+7 OFF
+```
+
+Safe complete refresh에서 출력이 OFF로 유지되고 이후 별도 ON complete refresh에서 재활성화된 동작으로
+safe resynchronization과 latch 해제를 확인했습니다.
+
+### 판정 및 범위
+
+| 검증 항목 | 판정 |
+|---|---|
+| Command-loss physical safe shutdown | **Hardware PASS** |
+| Timeout latch | **Hardware PASS** |
+| Unsafe ON rejection | **Hardware PASS** |
+| Safe resynchronization | **Hardware PASS** |
+| Post-resync output reactivation | **Hardware PASS** |
+| Repeated command-loss shutdown | **Hardware PASS** |
+| Physical fail-safe behavior | **HW VERIFIED** |
+| Exact timeout latency | **NOT INSTRUMENT-MEASURED** |
+
+WSL USB/VCP detach/attach 및 `/dev/ttyACM0` disappearance/reappearance는 확인했습니다.
+이는 USB/VCP 장치 상태의 확인이며 Linux automatic reconnect 검증을 의미하지 않습니다.
+
+다음 항목은 이번 시험의 완료 범위에 포함하지 않습니다:
+
+- Linux automatic reconnect
+- Linux CommunicationFault propagation
+- Sensor stale detection
+- Session / Sequence / ACK
+- Exact timeout latency measurement
+- Full production-controller disconnect/reconnect E2E
+
+이번 판정은 command 송신 중단과 timeout/latch/resynchronization에 따른 Pump/Heater/RUN의 물리 출력 동작에 한정합니다.
+기존 Door / E-Stop / DHT11 등의 HW VERIFIED 기록은 유지합니다.
+
+**[STM32 COMMAND-LOSS FAIL-SAFE — HW VERIFIED]**
