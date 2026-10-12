@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="300" viewBox="0 0 1280 300" role="img" aria-labelledby="title desc">
-  <title id="title">C++ Equipment Controller</title>
+  <title id="title">Equipment Controller</title>
   <desc id="desc">Linux C++ control logic, STM32 device I/O, UART integration and physical E2E verification.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#0d1b2a"/><stop offset="1" stop-color="#123b43"/></linearGradient>
@@ -10,7 +10,7 @@
   <rect x="48" y="46" width="5" height="202" rx="2.5" fill="#54d6bd"/>
   <g font-family="Arial, Helvetica, sans-serif">
     <text x="76" y="72" fill="#8fe2d2" font-size="14" font-weight="700" letter-spacing="3">EMBEDDED CONTROL / DEVICE INTEGRATION</text>
-    <text x="76" y="129" fill="#f4f8fc" font-size="44" font-weight="700">C++ Equipment Controller</text>
+    <text x="76" y="129" fill="#f4f8fc" font-size="44" font-weight="700">Equipment Controller</text>
     <text x="78" y="165" fill="#b7cdd5" font-size="19">State Machine · Sequence · Interlock · UART</text>
     <g font-size="14" font-weight="700">
       <rect x="78" y="198" width="178" height="34" rx="7" fill="#213d4c" stroke="#385664"/>
