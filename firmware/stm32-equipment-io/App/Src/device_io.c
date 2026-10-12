@@ -127,3 +127,13 @@ void DeviceIo_SetIndicators(bool run, bool error)
   HAL_GPIO_WritePin(STATE_G_GPIO_Port, STATE_G_Pin, run ? GPIO_PIN_SET : GPIO_PIN_RESET);
   HAL_GPIO_WritePin(STATE_B_GPIO_Port, STATE_B_Pin, GPIO_PIN_RESET);
 }
+
+void DeviceIo_SetStepperCoils(uint8_t pattern)
+{
+  const uint16_t mask = STEPPER_IN1_Pin | STEPPER_IN2_Pin |
+                        STEPPER_IN3_Pin | STEPPER_IN4_Pin;
+  const uint16_t high = (uint16_t)pattern & mask;
+  const uint16_t low = mask & (uint16_t)~high;
+  if (low) HAL_GPIO_WritePin(GPIOC, low, GPIO_PIN_RESET);
+  if (high) HAL_GPIO_WritePin(GPIOC, high, GPIO_PIN_SET);
+}

@@ -43,6 +43,17 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 )
 
 # Add sources to executable
+option(STEPPER_HARDWARE_TEST "Build isolated command-started stepper bench firmware" OFF)
+option(DHT11_HARDWARE_TEST "Build isolated DHT11 hardware verification harness" OFF)
+if(STEPPER_HARDWARE_TEST AND DHT11_HARDWARE_TEST)
+    message(FATAL_ERROR "Select only one isolated hardware test firmware")
+endif()
+set(IO_RUNTIME_SOURCE App/Src/io_runtime.c)
+if(STEPPER_HARDWARE_TEST)
+    # Preserve main.c and all CubeMX configuration. Substitute only the runtime
+    # entry adapters in this explicit bench build; production uses the real file.
+    set(IO_RUNTIME_SOURCE HardwareTest/stepper_hardware_test.c)
+endif()
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
     App/Src/dht11.c
@@ -51,7 +62,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Src/pressure_adc.c
     App/Src/io_protocol.c
     App/Src/uart_io.c
-    App/Src/io_runtime.c
+    App/Src/stepper.c
+    ${IO_RUNTIME_SOURCE}
 )
 
 # Add include paths
@@ -76,7 +88,6 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 )
 
 # Opt-in bench firmware; normal Debug/Release builds retain the production runtime.
-option(DHT11_HARDWARE_TEST "Build isolated DHT11 hardware verification harness" OFF)
 if(DHT11_HARDWARE_TEST)
     target_sources(${CMAKE_PROJECT_NAME} PRIVATE
         HardwareTest/dht11_hardware_test.c
@@ -87,5 +98,13 @@ if(DHT11_HARDWARE_TEST)
         COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${CMAKE_PROJECT_NAME}>
             ${CMAKE_CURRENT_BINARY_DIR}/dht11-hardware-test.bin
         COMMENT "Generate isolated DHT11 harness binary (not production firmware)"
+        VERBATIM)
+endif()
+
+if(STEPPER_HARDWARE_TEST)
+    add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${CMAKE_PROJECT_NAME}>
+            ${CMAKE_CURRENT_BINARY_DIR}/stepper-hardware-test.bin
+        COMMENT "Generate isolated stepper bench binary (not production firmware)"
         VERBATIM)
 endif()

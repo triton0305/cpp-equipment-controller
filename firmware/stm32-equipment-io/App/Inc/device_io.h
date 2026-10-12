@@ -2,6 +2,7 @@
 #define DEVICE_IO_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 typedef enum
 {
@@ -23,5 +24,8 @@ void DeviceIo_SetStateLed(DeviceStateLed state);
 void DeviceIo_SetIndicators(bool run, bool error);
 
 void DeviceIo_SetSafeState(void);
+
+/* Low four bits map to IN1..IN4 (PC0..PC3); all other pins are preserved. */
+void DeviceIo_SetStepperCoils(uint8_t pattern);
 
 #endif

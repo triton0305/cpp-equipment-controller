@@ -6,7 +6,9 @@
 실물 보드 검증 결과는 [HARDWARE_VERIFICATION.md](HARDWARE_VERIFICATION.md)에 정리했습니다.  
 RUN 상태 E-Stop E2E를 포함한 실제 입력·출력 검증 결과를 확인할 수 있습니다.
 
-**최신 변경:** Communication Safety Phase 1은 Host 검증 및 command-loss 물리 출력 동작의 Hardware 검증을 완료했습니다.
+**최신 추가:** Stepper Phase A Host 검증 및 Phase B 독립 시험 Firmware 준비 완료 / Stepper Hardware 미검증. [13절](#13-stepper-phase-a--b-준비--2026-10-12)에 기록합니다.
+
+Communication Safety Phase 1은 Host 검증 및 command-loss 물리 출력 동작의 Hardware 검증을 완료했습니다.
 정확한 1000 ms physical latency는 계측 장비로 측정하지 않았습니다.
 현재 정책과 검증 결과는 [12절](#12-communication-safety-phase-1--2026-10-12)에 기록합니다.
 
@@ -839,3 +841,131 @@ Session/Sequence/ACK 및 full production-controller disconnect/reconnect E2E는 
 DHT11 Driver와 기존 Door/E-Stop 등의 HW VERIFIED 기록은 유지합니다.
 
 **[STM32 COMMAND-LOSS FAIL-SAFE — HW VERIFIED]**
+
+---
+
+## 13. Stepper Phase A + B 준비 — 2026-10-12
+
+**Phase A: HOST VERIFIED / Phase B: PREPARED, HARDWARE NOT YET VERIFIED**
+
+시작 기준은 `main`, HEAD/origin/main `3596ece`, Working Tree clean입니다.
+28BYJ-48 + ULN2003, IN1–IN4 = PC0–PC3를 대상으로 Driver와 독립 시험 빌드를 추가했습니다.
+Production VALVE 연결과 위치 제어는 후속 단계입니다. Boot 및 이후 실제 위치는 **UNKNOWN**이며,
+OPEN/CLOSED 도달, 각도, 시계/반시계 방향을 소프트웨어 결과만으로 확정하지 않습니다.
+
+### Driver 및 GPIO 계층
+
+`App/Src/stepper.c` / `App/Inc/stepper.h`는 단일 foreground 소유의 유한 이동 Driver입니다.
+`DeviceIo_SetStepperCoils(pattern)`은 하위 4bit만 PC0–PC3에 적용합니다.
+핀 mask를 사용한 HAL GPIO 쓰기로 PC4/DHT11, 다른 GPIOC 핀 및 GPIOA/B를 보존합니다.
+기존 `DeviceIo_SetSafeState()` 본문과 Production 호출 경로는 그대로 유지했습니다.
+
+| API | 동작 |
+|---|---|
+| `Stepper_Init()` | 이동·중복 요청 이력 초기화, coil OFF; 물리 위치 UNKNOWN |
+| `Stepper_RequestMove(id, direction, half_steps, now)` | 유효한 유한 이동 요청 접수; 이 시점에는 coil OFF |
+| `Stepper_Poll(now)` | 기한에 도달했을 때 최대 한 위상 출력 또는 마지막 위상 유지 후 release |
+| `Stepper_StopAndRelease()` | 이동 취소와 coil OFF, 이전 요청의 중복 방지 이력 유지 |
+| `Stepper_IsBusy()` | 마지막 위상 유지 시간을 포함한 이동 진행 여부 |
+
+요청 결과는 `ACCEPTED`, `DUPLICATE`, `BUSY`, `INVALID`입니다.
+ID는 **Driver 호출의 로컬 식별자**이며 UART Protocol/Session/Sequence 확장이 아닙니다.
+마지막으로 접수한 ID와 동일한 방향·스텝 수 요청은 이동 중/완료 후/취소 후 모두 no-op입니다.
+동일 ID의 다른 인자는 INVALID, 이동 중 새 ID는 BUSY로 거부하며 queue에 보관하지 않습니다.
+새 이동은 다른 ID로 명시적으로 요청합니다. 중복 판정은 마지막 접수 ID에 한정되며 과거 ID 전체를 저장하지 않습니다.
+`half_steps=0`과 잘못된 방향은 INVALID입니다.
+
+8-phase half-step, bit0 = IN1 순서:
+
+```text
+FWD: 01 → 03 → 02 → 06 → 04 → 0C → 08 → 09
+REV: 09 → 08 → 0C → 04 → 06 → 02 → 03 → 01
+```
+
+전기적 순서 이름이며 실제 축 방향은 실물 관찰 후 기록합니다.
+각 새 이동은 해당 순서의 첫 위상에서 시작합니다. 실제 위치나 탈조를 감지하지 않습니다.
+간격은 `STEPPER_INTERVAL_MS=2`, 시험 이동량은 `STEPPER_TEST_HALF_STEPS=512`입니다.
+Request 시각 +2 ms에 첫 위상, 이후 최소 2 ms 간격으로 위상을 출력합니다.
+512번째 위상을 출력하자마자 OFF하지 않고 마지막 위상도 최소 2 ms 유지한 뒤 완료/release합니다.
+지연 없는 Poll 기준 위상 출력은 +2…+1024 ms, 완료는 +1026 ms입니다.
+이는 소프트웨어 시간 정책이며 실제 모터 회전량/시간을 측정한 값은 아닙니다.
+
+`uint32_t` 차이로 wrap-around를 처리하며 동일 tick Poll은 추가 스텝을 만들지 않습니다.
+늦은 Poll은 한 위상만 출력하고 다음 기준을 현재 tick으로 옮겨 catch-up burst를 방지합니다.
+HAL_Delay, busy-wait, 이동 전체를 처리하는 루프, IRQ/Timer 변경은 없습니다.
+
+### 독립 시험 Firmware
+
+`StepperHardware` Preset은 `STEPPER_HARDWARE_TEST=ON`, `DHT11_HARDWARE_TEST=OFF`로 빌드합니다.
+두 시험 Option을 동시에 켜면 CMake에서 거부합니다.
+이 빌드에서만 `App/Src/io_runtime.c` 대신 `HardwareTest/stepper_hardware_test.c`를 선택합니다.
+시험 파일의 `IoRuntime_Init/Poll`은 기존 main이 호출할 **bench 전용 진입 어댑터**이며 Production Runtime 구현이 아닙니다.
+`Core/Src/main.c`, `.ioc`, GPIO/Clock/Timer/IRQ 설정은 수정하지 않았습니다.
+
+- Boot: coil OFF, `STEPPER BENCH READY COILS_OFF POSITION_UNKNOWN` 출력 후 대기.
+- `FWD\n` / `REV\n`: idle일 때 새 로컬 ID로 512 half-step 요청. 이동 중 요청은 `BUSY`, 재시작/예약 없음.
+- `STOP\n`: RX 처리 중 즉시 `StopAndRelease`, `STOPPED COILS_OFF` 출력.
+- 정상 완료: `DONE COILS_OFF`. 완료 후 명시적으로 보낸 FWD/REV는 별도의 새 시험 요청입니다.
+- LF/CRLF 및 fragmented 입력 허용. Unknown/oversized/binary Line은 이동을 시작하지 않음.
+- UART RX 오류 시 정지·release하고 다음 LF까지 폐기.
+- RX/TX는 각 Poll 최대 32 byte. 보고는 256byte ring에 저장하며 TX backpressure가 이동/STOP을 막지 않음.
+  보고 queue가 가득 차면 새 보고 전체를 버리고 `stepper_hardware_dropped_reports`를 증가시킴.
+
+이 Firmware는 Production UART Protocol, 센서 보고, Door/E-Stop 판단, Communication Fail-safe를 실행하지 않습니다.
+Host 연결이 사라져도 이미 접수한 512-step 이동은 완료 후 release합니다. bench STOP은 명시적 UART 명령입니다.
+Production Linux Controller와 함께 사용하지 않으며, 시험의 `DONE`은 소프트웨어 완료 보고일 뿐 HW PASS가 아닙니다.
+
+### Host / Build 검증 결과
+
+`STM32_STEPPER_HOST`, `STM32_STEPPER_BENCH_HOST` 두 Suite를 추가했습니다.
+실제 Driver/Device I/O/bench C 코드와 제어 가능한 Tick/GPIO/UART fake를 사용합니다.
+
+- 초기 OFF, 양방향 8-phase 순서와 각 512회 출력, 2 ms 경계, 마지막 위상 dwell/release.
+- Poll당 최대 한 스텝, 늦은 Poll과 동일 tick, uint32 wrap-around.
+- 동일 요청 중복, busy 중 새 요청, 잘못된 인자, 완료/취소 후 중복 및 명시적 재구동.
+- 중간 취소, 첫 스텝 전 취소, busy 중 재초기화, 취소 후 OFF 유지.
+- GPIO mask와 PC4 포함 다른 GPIO의 HIGH/LOW 보존.
+- Boot 무구동, 명시적 FWD/REV/STOP, CRLF/부분 Line, UART 오류, malformed 입력.
+- TX backpressure/보고 queue 포화 상태에서도 STOP 처리 및 OFF 유지.
+
+```text
+Linux Build / STM32 Host Build : PASS
+Existing CTest                : 38/38 PASS
+New Stepper CTest             :  2/2  PASS
+Full CTest                    : 40/40 PASS
+Production ARM Debug Build    : PASS (FLASH 20,104 B / RAM 2,160 B)
+StepperHardware Build         : PASS (FLASH 14,880 B / RAM 2,208 B)
+Physical Stepper Verification : NOT YET VERIFIED
+```
+
+실행 명령 (Repository Root):
+
+```sh
+cmake -S . -B build-refactor
+cmake --build build-refactor -j2
+ctest --test-dir build-refactor --output-on-failure
+cd firmware/stm32-equipment-io
+cmake --preset Debug -DDHT11_HARDWARE_TEST=OFF -DSTEPPER_HARDWARE_TEST=OFF
+cmake --build --preset Debug
+cmake --preset StepperHardware
+cmake --build --preset StepperHardware
+```
+
+### Production 기준선 보존
+
+`IoRuntime_Poll`, VALVE 처리, Timeout/Latch, Protocol, Linux Controller, DHT11 Driver는 수정하지 않았습니다.
+Production ELF에는 사용되지 않는 `Stepper_*`/coil setter가 링크 제거되며 자동 구동 경로가 없습니다.
+bench ELF에는 Stepper가 포함되고 Production parser/communication fail-safe는 포함되지 않는 것을 확인했습니다.
+CMake compile source 목록으로 각 빌드에 올바른 Runtime 구현 하나만 포함됨도 확인했습니다.
+
+변경 전/후 Production Flash binary는 `cmp`로 바이트 단위 동일함을 확인했습니다.
+두 파일의 SHA-256:
+
+```text
+53afb09e787e43b3d3ff2f1eba66e1cc6075644e0712a8c5f4c993f227eeaabb
+```
+
+비교 자료는 `firmware/stm32-equipment-io/build/stepper-verification/production-before.bin`, `production-after.bin`입니다.
+기존 command-loss **HW VERIFIED** 및 exact latency **NOT INSTRUMENT-MEASURED** 판정은 유지합니다.
+신규 Stepper에는 이 Hardware 판정을 확장하지 않습니다.
+실제 시험 준비·관찰표는 [Hardware Verification 15절](HARDWARE_VERIFICATION.md#15-stepper-phase-b-hardware-verification-준비--2026-10-12)에 기록했습니다.

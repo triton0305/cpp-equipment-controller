@@ -592,3 +592,151 @@ WSL USB/VCP detach/attach 및 `/dev/ttyACM0` disappearance/reappearance는 확�
 기존 Door / E-Stop / DHT11 등의 HW VERIFIED 기록은 유지합니다.
 
 **[STM32 COMMAND-LOSS FAIL-SAFE — HW VERIFIED]**
+
+---
+
+## 15. Stepper Phase B Hardware Verification 준비 — 2026-10-12
+
+**PREPARED / NOT YET VERIFIED**
+
+Phase A Driver/Host Test 및 독립 Firmware 빌드는 완료했습니다.
+이번 작업에서는 Flash, 모터 정·역회전, ULN2003 LED 및 coil OFF의 실물 관찰을 수행하지 않았습니다.
+아래 절차는 사용자가 후속 Hardware Verification에서 실행할 준비 자료입니다.
+
+### 시험 환경 및 Firmware 구분
+
+- 기준: `3596ece` + Stepper Phase A/B 준비 변경.
+- Board: NUCLEO-F411RE, Motor: 28BYJ-48, Driver: ULN2003.
+- 인수인계 배선: IN1=PC0, IN2=PC1, IN3=PC2, IN4=PC3. DHT11 PC4 유지.
+- 모터 전원 정격·실제 배선·공통 GND는 시험 전에 사용자가 확인. 이번 작업에서 직접 확인하지 않음.
+- 무부하 정·역회전 시험으로 시작하며 OPEN/CLOSED 위치, 회전 각도 및 실제 CW/CCW를 미리 확정하지 않음.
+- USART2 / ST-LINK VCP / 115200 8N1 / WSL `/dev/ttyACM0`.
+- 8-phase half-step, 초기 2 ms/half-step, 명령당 512 phase 출력, 마지막 위상 유지 후 coil OFF.
+
+`StepperHardware`는 Production Runtime을 실행하지 않는 **독립 시험 Firmware**입니다.
+Door/E-Stop 입력 보고와 Production Communication Fail-safe는 이 Firmware에 없습니다.
+시험 중 UART가 끊겨도 진행 중인 유한 이동은 완료 후 coil OFF합니다.
+Production Linux Controller와 다른 Serial Writer를 종료하고 시험합니다.
+모터 전원/배선 문제나 의도하지 않은 구동을 발견하면 시험을 중단하고 원인을 보고합니다.
+
+### Build 및 Flash 준비
+
+Repository Root에서:
+
+```sh
+cd firmware/stm32-equipment-io
+cmake --preset StepperHardware
+cmake --build --preset StepperHardware
+```
+
+Artifact:
+
+```text
+firmware/stm32-equipment-io/build/StepperHardware/stm32-equipment-io.elf
+firmware/stm32-equipment-io/build/StepperHardware/stepper-hardware-test.bin
+```
+
+사용자가 Hardware 시험을 진행하기로 결정한 뒤, Repository Root에서 대상 ST-LINK를 확인합니다.
+기존 설치 경로를 사용하며 현재 장치의 Serial을 확인한 값으로 대입합니다.
+
+```sh
+STEPPER_PROGRAMMER=/home/kccistc/.local/share/stm32cube/bundles/programmer/2.23.0/bin/STM32_Programmer_CLI
+"$STEPPER_PROGRAMMER" -l stlink-only
+# 아래 값은 확인한 보드 Serial로 교체한 뒤 실행
+STEPPER_STLINK_SERIAL='<확인한_SERIAL>'
+"$STEPPER_PROGRAMMER" -c port=SWD sn="$STEPPER_STLINK_SERIAL" mode=UR reset=HWrst \
+  -d firmware/stm32-equipment-io/build/StepperHardware/stepper-hardware-test.bin 0x08000000 \
+  -v -rst
+```
+
+Programming/Verification 성공과 Boot 직후 coil OFF를 직접 확인합니다.
+이 문서 작성 과정에서는 위 Flash 명령을 실행하지 않았습니다.
+
+### UART 시험 시작과 관찰
+
+터미널 A에서 Serial 수신을 시작하고 보드를 Reset하여 READY를 확인합니다:
+
+```sh
+stty -F /dev/ttyACM0 115200 raw -echo cs8 -cstopb -parenb -crtscts -ixon -ixoff
+cat /dev/ttyACM0
+```
+
+Boot 보고 형식:
+
+```text
+STEPPER BENCH READY COILS_OFF POSITION_UNKNOWN
+```
+
+각 단계는 사용자가 명시적으로 실행하고 실물 결과를 확인한 뒤 다음으로 넘어갑니다.
+터미널 B에서 정방향 요청:
+
+```sh
+printf 'FWD\n' > /dev/ttyACM0
+```
+
+`START FWD 512` → `DONE COILS_OFF`와 함께 실제 축 회전·LED 패턴 및 완료 후 LED OFF를 관찰합니다.
+소프트웨어 기준 예상 시간은 약 1026 ms + Poll 지연입니다. 실제 latency 계측값이 아닙니다.
+완료를 확인한 뒤 역방향 요청:
+
+```sh
+printf 'REV\n' > /dev/ttyACM0
+```
+
+실제 축이 반대 방향으로 회전하는지와 완료 후 coil OFF를 확인합니다.
+이동 중 `FWD`/`REV`는 `BUSY`로 거부되며 재시작/대기 이동을 만들지 않습니다.
+완료 후 새 FWD/REV Line은 별도 시험 요청입니다. 상태 갱신처럼 지속 반복 송신하지 않습니다.
+
+중간 정지는 다음 명령으로 FWD 요청 약 250 ms 후 STOP을 송신합니다:
+
+```sh
+python3 - <<'PY'
+import os
+import time
+fd = os.open('/dev/ttyACM0', os.O_WRONLY | os.O_NOCTTY)
+try:
+    os.write(fd, b'FWD\n')
+    time.sleep(0.25)
+    os.write(fd, b'STOP\n')
+finally:
+    os.close(fd)
+PY
+```
+
+실제로 이동 중 정지가 되었는지 확인합니다. Host scheduling 지연으로 이미 완료된 경우에는
+중간 정지 PASS로 기록하지 않고 다시 시험합니다. `STOPPED COILS_OFF` 이후 최소 2초 동안
+coil OFF와 무재시작을 관찰한 뒤 `REV` 또는 `FWD`를 명시적으로 송신해 재구동을 확인합니다.
+마지막에는 `STOP\n`을 송신하고 코일 OFF를 확인합니다.
+
+### 실제 결과 기록표 — 현재 전 항목 미실행
+
+| 단계 | 관찰/판정 기준 | 실제 결과 |
+|---|---|---|
+| 1 | Boot 후 명령 전 ULN2003 coil LED OFF, 축 무구동 | NOT YET VERIFIED |
+| 2 | 명시적 FWD 수신 후에만 구동 시작 | NOT YET VERIFIED |
+| 3 | FWD 512 phase 동안 실제 회전, 관찰 CW/CCW 기록 | NOT YET VERIFIED |
+| 4 | FWD 완료 후 coil OFF | NOT YET VERIFIED |
+| 5 | REV 512 phase 동안 실제 반대 회전 | NOT YET VERIFIED |
+| 6 | REV 완료 후 coil OFF | NOT YET VERIFIED |
+| 7 | 이동 중 StopAndRelease에 따른 회전 중단 | NOT YET VERIFIED |
+| 8 | 정지 후 coil OFF 유지 및 자동 재시작 없음 | NOT YET VERIFIED |
+| 9 | 새 요청으로 정상 재구동 및 완료 후 OFF | NOT YET VERIFIED |
+| 10 | 실제 축/ULN2003 LED 관찰 기록 | NOT YET VERIFIED |
+
+UART `DONE`이나 Host Test PASS만으로 위 항목을 PASS로 변경하지 않습니다.
+512개 전기적 위상 출력과 실제 축의 정확한 이동량은 구분합니다.
+실제 방향, 스텝 간격/각도 계측, 위치 정확도, 부하 토크, 탈조 여부, OPEN/CLOSED 도달은 현재 미확인입니다.
+이 시험은 Production VALVE/센서/E-Stop/command-loss와 Stepper의 통합 검증이 아닙니다.
+기존 Door/E-Stop/DHT11 및 STM32 command-loss의 HW VERIFIED 기록은 그대로 유지합니다.
+
+### Production 복귀
+
+시험 완료 후 Production을 다시 Build합니다:
+
+```sh
+cd firmware/stm32-equipment-io
+cmake --preset Debug -DSTEPPER_HARDWARE_TEST=OFF -DDHT11_HARDWARE_TEST=OFF
+cmake --build --preset Debug
+```
+
+Build만으로 보드 Firmware가 바뀌지 않습니다. 대상 보드를 확인한 뒤 사용자 결정으로
+`build/Debug/stm32-equipment-io.elf`를 Flash하고 Production 동작을 확인해야 복귀가 완료됩니다.

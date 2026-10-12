@@ -81,3 +81,13 @@ target_include_directories(test_dht11_diagnostic PRIVATE firmware/dht11_fakes
   ${FIRMWARE_APP}/Inc ${FIRMWARE_APP}/../Core/Inc ${FIRMWARE_APP}/../HardwareTest)
 add_test(NAME STM32_DHT11_DIAGNOSTIC_HOST COMMAND test_dht11_diagnostic)
 set_tests_properties(STM32_DHT11_DIAGNOSTIC_HOST PROPERTIES TIMEOUT 5)
+
+# Actual stepper/device I/O and bench adapter, with controllable Tick/GPIO/UART.
+add_executable(test_stepper firmware/test_stepper.cpp
+  ${FIRMWARE_APP}/Src/stepper.c ${FIRMWARE_APP}/Src/device_io.c
+  ${FIRMWARE_APP}/../HardwareTest/stepper_hardware_test.c)
+target_include_directories(test_stepper PRIVATE firmware/fakes ${FIRMWARE_APP}/Inc
+  ${FIRMWARE_APP}/../Core/Inc)
+add_test(NAME STM32_STEPPER_HOST COMMAND test_stepper)
+add_test(NAME STM32_STEPPER_BENCH_HOST COMMAND test_stepper --bench)
+set_tests_properties(STM32_STEPPER_HOST STM32_STEPPER_BENCH_HOST PROPERTIES TIMEOUT 5)
