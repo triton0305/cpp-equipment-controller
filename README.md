@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/header.svg" alt="C++ Equipment Controller — Linux control logic and STM32 device I/O" width="100%">
+  <img src="docs/assets/header.svg" alt="Equipment Controller — Linux control logic and STM32 device I/O" width="100%">
 </p>
 
 <p align="center">
