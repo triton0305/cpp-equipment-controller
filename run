@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -e
+
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+DEVICE="${1:-/dev/ttyACM0}"
+
+exec "$ROOT/build-refactor/apps/controller/equipment_controller" "$DEVICE"
