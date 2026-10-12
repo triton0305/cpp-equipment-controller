@@ -21,7 +21,11 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#ifdef DHT11_HARDWARE_TEST
+#include "dht11_hardware_test.h"
+#else
 #include "io_runtime.h"
+#endif
 
 /* USER CODE END Includes */
 
@@ -103,7 +107,11 @@ int main(void)
   MX_I2C1_Init();
   MX_TIM5_Init();
   /* USER CODE BEGIN 2 */
+#ifdef DHT11_HARDWARE_TEST
+  Dht11HardwareTest_Init(&htim5, &huart2);
+#else
   IoRuntime_Init(&hadc1, &huart2);
+#endif
 
   /* USER CODE END 2 */
 
@@ -114,7 +122,11 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+#ifdef DHT11_HARDWARE_TEST
+    Dht11HardwareTest_Poll();
+#else
     IoRuntime_Poll();
+#endif
   }
   /* USER CODE END 3 */
 }

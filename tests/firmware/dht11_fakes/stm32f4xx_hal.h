@@ -17,4 +17,6 @@ typedef struct { uint32_t Pin, Mode, Pull, Speed; } GPIO_InitTypeDef;
 #define GPIO_NOPULL 0U
 #define GPIO_SPEED_FREQ_LOW 0U
 void HAL_GPIO_Init(GPIO_TypeDef *port, GPIO_InitTypeDef *gpio);
+HAL_StatusTypeDef HAL_UART_Transmit(UART_HandleTypeDef *uart, uint8_t *data,
+                                    uint16_t size, uint32_t timeout);
 #endif

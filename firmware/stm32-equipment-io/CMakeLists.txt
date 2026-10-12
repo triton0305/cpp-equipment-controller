@@ -74,3 +74,18 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 
     # Add user defined libraries
 )
+
+# Opt-in bench firmware; normal Debug/Release builds retain the production runtime.
+option(DHT11_HARDWARE_TEST "Build isolated DHT11 hardware verification harness" OFF)
+if(DHT11_HARDWARE_TEST)
+    target_sources(${CMAKE_PROJECT_NAME} PRIVATE
+        HardwareTest/dht11_hardware_test.c
+        HardwareTest/dht11_diagnostic.c)
+    target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE HardwareTest)
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE DHT11_HARDWARE_TEST=1)
+    add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${CMAKE_PROJECT_NAME}>
+            ${CMAKE_CURRENT_BINARY_DIR}/dht11-hardware-test.bin
+        COMMENT "Generate isolated DHT11 harness binary (not production firmware)"
+        VERBATIM)
+endif()

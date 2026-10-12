@@ -69,3 +69,14 @@ target_include_directories(test_dht11 PRIVATE firmware/dht11_fakes
   ${FIRMWARE_APP}/Inc ${FIRMWARE_APP}/../Core/Inc)
 add_test(NAME STM32_DHT11_DRIVER_HOST COMMAND test_dht11)
 set_tests_properties(STM32_DHT11_DECODE_HOST STM32_DHT11_DRIVER_HOST PROPERTIES TIMEOUT 5)
+
+# Exercise bench diagnostics separately; preserve the normal driver test target.
+add_executable(test_dht11_diagnostic firmware/test_dht11.c
+  ${FIRMWARE_APP}/Src/dht11.c ${FIRMWARE_APP}/Src/dht11_frame.c
+  ${FIRMWARE_APP}/../HardwareTest/dht11_diagnostic.c
+  ${FIRMWARE_APP}/../HardwareTest/dht11_hardware_test.c)
+target_compile_definitions(test_dht11_diagnostic PRIVATE DHT11_HARDWARE_TEST=1)
+target_include_directories(test_dht11_diagnostic PRIVATE firmware/dht11_fakes
+  ${FIRMWARE_APP}/Inc ${FIRMWARE_APP}/../Core/Inc ${FIRMWARE_APP}/../HardwareTest)
+add_test(NAME STM32_DHT11_DIAGNOSTIC_HOST COMMAND test_dht11_diagnostic)
+set_tests_properties(STM32_DHT11_DIAGNOSTIC_HOST PROPERTIES TIMEOUT 5)

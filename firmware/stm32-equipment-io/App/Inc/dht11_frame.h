@@ -24,7 +24,7 @@ typedef struct {
   int16_t temperature_tenths_c;
 } Dht11Sample;
 
-/* Aosong DHT11 V1.3: humidity fraction zero, temperature fraction 0..9,
+/* DHT11: humidity and temperature decimal digits 0..9,
  * temperature sign in byte 3 bit 7. Output changes only on OK. */
 Dht11Result Dht11_Decode(const uint8_t *frame, size_t length, Dht11Sample *sample);
 

@@ -2,6 +2,13 @@
 #include "main.h"
 #include <stdbool.h>
 
+#ifdef DHT11_HARDWARE_TEST
+#include "dht11_diagnostic.h"
+#else
+#define DHT11_DIAG_REASON(reason_) ((void)0)
+#define DHT11_DIAG_RECORD(raw_, bits_, reason_, width_) ((void)0)
+#endif
+
 static TIM_HandleTypeDef *clock_timer;
 static uint32_t last_attempt_ms, low_started_ms, capture_started_us, capture_started_ms;
 static uint32_t ready_delay_ms;
@@ -46,20 +53,39 @@ static Dht11Result capture(Dht11Sample *sample)
   input_mode(); /* Release, never actively drive HIGH against the sensor. */
   if (!wait_level(GPIO_PIN_SET, 20U) || !wait_level(GPIO_PIN_RESET, 100U) ||
       !wait_level(GPIO_PIN_SET, 120U) || !wait_level(GPIO_PIN_RESET, 120U))
+  {
+    DHT11_DIAG_RECORD(frame, 0U, DHT_DIAG_RESPONSE_TIMEOUT, 0U);
     return DHT11_RESPONSE_TIMEOUT;
+  }
 
   for (unsigned bit = 0; bit < 40U; ++bit)
   {
-    if (!wait_level(GPIO_PIN_SET, 100U)) return DHT11_DATA_TIMEOUT;
+    if (!wait_level(GPIO_PIN_SET, 100U))
+    {
+      DHT11_DIAG_RECORD(frame, bit, DHT_DIAG_DATA_LOW_TIMEOUT, 0U);
+      return DHT11_DATA_TIMEOUT;
+    }
     const uint32_t rising = micros();
-    if (!wait_level(GPIO_PIN_RESET, 100U)) return DHT11_DATA_TIMEOUT;
+    if (!wait_level(GPIO_PIN_RESET, 100U))
+    {
+      DHT11_DIAG_RECORD(frame, bit, DHT_DIAG_DATA_HIGH_TIMEOUT, 0U);
+      return DHT11_DATA_TIMEOUT;
+    }
     const uint32_t width = (uint32_t)(micros() - rising);
     /* Reject ambiguous/noisy highs instead of treating every pulse as a bit. */
     if (!((width >= 15U && width <= 40U) || (width >= 55U && width <= 90U)))
+    {
+      DHT11_DIAG_RECORD(frame, bit, DHT_DIAG_PULSE, width);
       return DHT11_INVALID_DATA;
+    }
     frame[bit / 8U] = (uint8_t)((frame[bit / 8U] << 1U) | (width >= 55U));
   }
-  if (!wait_level(GPIO_PIN_SET, 100U)) return DHT11_DATA_TIMEOUT;
+  if (!wait_level(GPIO_PIN_SET, 100U))
+  {
+    DHT11_DIAG_RECORD(frame, 40U, DHT_DIAG_END_TIMEOUT, 0U);
+    return DHT11_DATA_TIMEOUT;
+  }
+  DHT11_DIAG_RECORD(frame, 40U, DHT_DIAG_NONE, 0U);
   return Dht11_Decode(frame, sizeof(frame), sample);
 }
 
@@ -70,7 +96,10 @@ Dht11Result Dht11_Init(TIM_HandleTypeDef *timer)
   clock_timer = NULL;
   if (!timer || timer->Instance != TIM5 || timer->Init.Prescaler != 83U ||
       timer->Init.Period != UINT32_MAX || timer->Init.CounterMode != TIM_COUNTERMODE_UP)
+  {
+    DHT11_DIAG_REASON(DHT_DIAG_INIT_ARGUMENT);
     return DHT11_INVALID_DATA;
+  }
   if (HAL_TIM_Base_Start(timer) != HAL_OK) return DHT11_HAL_ERROR;
   clock_timer = timer;
   input_mode();
@@ -103,6 +132,7 @@ Dht11Result Dht11_Poll(Dht11Sample *sample)
 {
   if (!sample)
   {
+    DHT11_DIAG_REASON(DHT_DIAG_SAMPLE_ARGUMENT);
     Dht11_Cancel();
     return DHT11_INVALID_DATA;
   }
@@ -112,6 +142,7 @@ Dht11Result Dht11_Poll(Dht11Sample *sample)
   pending = false;
   if (elapsed >= 30U)
   {
+    DHT11_DIAG_REASON(DHT_DIAG_START_LATE);
     input_mode();
     return DHT11_DATA_TIMEOUT;
   }

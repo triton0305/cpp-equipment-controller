@@ -24,12 +24,26 @@ int main(void)
   check_frame(95, 0, 19, 0x89, DHT11_OK, 950, -199);
   check_frame(4, 0, 24, 0, DHT11_INVALID_DATA, 0, 0);
   check_frame(96, 0, 24, 0, DHT11_INVALID_DATA, 0, 0);
-  check_frame(53, 1, 24, 0, DHT11_INVALID_DATA, 0, 0);
+  check_frame(53, 1, 24, 0, DHT11_OK, 531, 240);
+  check_frame(94, 9, 24, 0, DHT11_OK, 949, 240);
+  check_frame(53, 10, 24, 0, DHT11_INVALID_DATA, 0, 0);
+  check_frame(53, 255, 24, 0, DHT11_INVALID_DATA, 0, 0);
+  check_frame(4, 9, 24, 0, DHT11_INVALID_DATA, 0, 0);
+  check_frame(95, 1, 24, 0, DHT11_INVALID_DATA, 0, 0);
   check_frame(53, 0, 24, 10, DHT11_INVALID_DATA, 0, 0);
   check_frame(53, 0, 20, 0x81, DHT11_INVALID_DATA, 0, 0);
   check_frame(53, 0, 60, 1, DHT11_INVALID_DATA, 0, 0);
   check_frame(0, 0, 0, 0, DHT11_INVALID_DATA, 0, 0);
   check_frame(255, 255, 255, 255, DHT11_INVALID_DATA, 0, 0);
+  /* Literal regression frame: checksum 0x51, humidity 45.2%, temperature 25.9C. */
+  uint8_t fractional_frame[5] = {0x2D, 0x02, 0x19, 0x09, 0x51};
+  Dht11Sample fractional_sample = {0};
+  CHECK(Dht11_Decode(fractional_frame, sizeof(fractional_frame), &fractional_sample) == DHT11_OK);
+  CHECK(fractional_sample.humidity_tenths_percent == 452);
+  CHECK(fractional_sample.temperature_tenths_c == 259);
+  fractional_frame[4] ^= 1U;
+  CHECK(Dht11_Decode(fractional_frame, sizeof(fractional_frame), &fractional_sample) == DHT11_CHECKSUM_ERROR);
+  CHECK(fractional_sample.humidity_tenths_percent == 452 && fractional_sample.temperature_tenths_c == 259);
   uint8_t frame[6] = {53, 0, 24, 0, 77, 0};
   Dht11Sample sample = {123, -123};
   CHECK(Dht11_Decode(NULL, 5, &sample) == DHT11_INVALID_DATA);

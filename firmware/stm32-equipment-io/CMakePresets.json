@@ -18,6 +18,14 @@
             }
         },
         {
+            "name": "Dht11Hardware",
+            "inherits": "Debug",
+            "description": "Isolated DHT11 bench harness; production runtime disabled",
+            "cacheVariables": {
+                "DHT11_HARDWARE_TEST": "ON"
+            }
+        },
+        {
             "name": "Release",
             "inherits": "default",
             "cacheVariables": {
@@ -29,6 +37,10 @@
         {
             "name": "Debug",
             "configurePreset": "Debug"
+        },
+        {
+            "name": "Dht11Hardware",
+            "configurePreset": "Dht11Hardware"
         },
         {
             "name": "Release",

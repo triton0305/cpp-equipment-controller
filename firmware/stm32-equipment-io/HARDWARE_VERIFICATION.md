@@ -431,3 +431,88 @@ Build 검증 자료이므로 Repository Stage 대상에서는 제외했습니다
 이를 통해 실제 센서 입력이 STM32와 UART를 거쳐 Linux Controller에 전달되고, Controller의 출력 명령이 다시 STM32 GPIO에 적용되는 전체 제어 경로를 실물 보드에서 확인했습니다.
 
 **Core Physical E2E 검증 완료**
+
+
+---
+
+## 13. DHT11 Driver Hardware Verification — 2026-10-12
+
+사용자가 실제 보드에서 확인한 최종 로그를 기준으로 격리형 Hardware Verification Harness의
+DHT11 Driver 통신 결과를 기록했습니다. Production Linux Controller는 시험 경로에 포함하지 않았습니다.
+
+### 검증 환경과 절차
+
+- **Board:** NUCLEO-F411RE / STM32F411RET6
+- **Firmware baseline:** `e8974ee` + DHT11 Harness / Diagnostic / Humidity Decoder 수정
+- **DHT11:** 3핀 모듈, VCC 3.3 V, STM32 공통 GND, DATA PC4
+- **Pull-up:** 모듈 내장 Pull-up, 최종 검증은 외부 10 kΩ을 제거한 원래 배선
+- **Serial:** USART2 / ST-LINK VCP / 115200 8N1
+- **Host / Device:** WSL / `/dev/ttyACM0`
+- **Harness:** `Dht11Hardware` 빌드, Production `IoRuntime_Init/Poll` 호출 없음
+
+Init 이후 Sensor Stabilization을 기다린 뒤 Request / Poll을 반복하고 USART2 Debug 출력을 관찰했습니다.
+측정 시작 간격은 2100 ms입니다.
+
+```text
+STM32
+→ PC4
+→ DHT11
+→ 40-bit Frame
+→ Checksum Validation
+→ Temperature/Humidity Decode
+→ USART2 Debug Output
+→ WSL
+```
+
+### 최종 실제 결과
+
+| 검증 항목 | 결과 |
+|---|---|
+| 연속 정상 Sample | **16 / 16** |
+| INVALID_DATA | **0** |
+| Checksum | **관찰한 Sample 모두 VALID** |
+| Temperature | **25.8 °C** |
+| Humidity | **44.3–44.5 %RH** |
+| Measurement Interval | **2100 ms** |
+| DONE_MS − START_MS | **약 23 ms** |
+| 비정상 정지 | **없음** |
+
+약 23 ms는 Cooperative Start LOW 대기를 포함한 관찰 경과 시간입니다.
+Capture 단독 Blocking Time, Production Runtime WCET 또는 TIM5 정밀 Timing 실측값으로 해석하지 않습니다.
+
+### INVALID_DATA 원인과 수정
+
+기존 Decoder는 humidity decimal byte가 0인 Frame만 허용했습니다.
+실제 Sensor에서 수신한 다음 Frame은 Checksum이 정상이지만 이 조건 때문에 거절되었습니다.
+
+```text
+RAW=2D-02-19-09-51
+Humidity=45.2 %RH
+Temperature=25.9 °C
+Checksum=VALID (0x2D + 0x02 + 0x19 + 0x09 = 0x51)
+```
+
+습도를 `humidity_tenths = raw[0] * 10 + raw[1]`로 해석하도록 수정했습니다.
+습도 소수 byte는 0–9를 허용하며 기존 Checksum 및 최종 습도 범위 검증은 유지했습니다.
+Pulse Threshold, Timeout, TIM5, PC4 및 CubeMX 설정은 변경하지 않았습니다.
+수정 후 원래 배선에서 연속 16회 정상 Sample을 확인했습니다.
+
+원인 분석 중 정상 연결한 외부 10 kΩ Pull-up 적용 전후 결과는 각각
+`OK 1 / INVALID_DATA 15`로 동일했습니다. 외부 Pull-up 추가는 이 Validation 오류의 해결책이 아니었습니다.
+
+### 판정 범위
+
+PC4 실제 통신, Sensor Response, 40-bit Frame 수신, Checksum, 온도/습도 Decode와
+2.1초 간격의 연속 16회 측정은 **PASS / HW VERIFIED**입니다.
+
+Production Runtime Integration / Production Linux Controller Integration, UART RX 부하,
+Door / E-Stop Safety Latency, Production Runtime WCET, 온습도 절대 정확도/Calibration,
+Logic Analyzer 기반 TIM5 정밀 Timing 측정은 **NOT VERIFIED**입니다.
+RESPONSE_TIMEOUT / DATA_TIMEOUT / CHECKSUM_ERROR의 실제 Sensor 오류 시험도 미확인 상태로 남깁니다.
+
+이번 DHT11 검증에서 Buzzer Audible Test, Door Fault 또는 E-Stop Fault 실물 시험은 재수행하지 않았습니다.
+기존 Door / E-Stop / E-Stop→Buzzer / Core MVP Physical E2E의 HW VERIFIED 기록은 그대로 유지합니다.
+
+**DHT11 Driver: PASS / HW VERIFIED**
+
+**[DHT11 DRIVER — HW VERIFIED]**

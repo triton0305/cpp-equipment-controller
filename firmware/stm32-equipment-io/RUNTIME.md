@@ -359,9 +359,9 @@ LED / Buzzer
 
 ## 10. DHT11 Driver — 2026-10-12 / HOST VERIFIED
 
-이번 단계는 DHT11 Driver/API와 Host 검증입니다. **DHT11 HW VERIFIED가 아닙니다.**
+본 절은 DHT11 Driver/API의 최초 Host 검증 기록입니다. 최종 Driver Hardware 검증 상태는 11절에 반영했습니다.
 위 1–9절의 34/34 및 Physical E2E 결과는 이전 검증 기록으로 보존합니다.
-이번 전체 CTest 결과는 **36/36 PASS**입니다.
+당시 전체 CTest 결과는 **36/36 PASS**입니다.
 
 ### 작업 기준과 기존 설정
 
@@ -407,8 +407,8 @@ Sensor와 HIGH 출력 충돌을 피하기 위해 Capture와 종료 시 Input으�
 - `uint16_t humidity_tenths_percent`: 상대습도 0.1 %RH 단위 (`530` = 53 %RH)
 - `int16_t temperature_tenths_c`: 온도 0.1 °C 단위 (`237` = 23.7 °C)
 
-[Aosong DHT11 V1.3 제조사 문서](https://akizukidenshi.com/goodsaffix/DHT11_20180119.pdf)를 기준으로
-습도 정수 5–95 %RH, 습도 소수 byte 0, 온도 -20–60 °C를 지원합니다.
+최종 Decoder는 습도 5–95 %RH, 온도 -20–60 °C를 지원합니다.
+실제 Sensor Frame에 맞춰 습도 소수 byte 0–9를 허용하고 `raw[0] * 10 + raw[1]`로 0.1 %RH 값을 계산합니다.
 온도 byte 3의 하위 7 bit는 0–9 소수부, bit 7은 부호로 해석합니다.
 기존 정수 온도 Frame도 처리합니다. 실제 장착 Sensor의 Revision/지원 범위는 Hardware 단계에서 확인합니다.
 단위 표현은 Sensor의 정확도를 의미하지 않습니다.
@@ -457,7 +457,7 @@ GPIO HAL 함수는 별도 오류 결과를 반환하지 않으므로 추가 HAL 
 
 ### Runtime 영향과 통합 정책
 
-**Firmware Build 대상에 포함했지만 `main.c`와 `IoRuntime_Poll()`에서 호출하지 않습니다.**
+**Production Firmware에서는 DHT11을 호출하지 않습니다. 격리형 Harness는 `main.c` USER CODE에서 별도 선택합니다.**
 기존 `device_io`, `io_runtime`, ADC/UART Adapter, Protocol, Linux State Machine은 변경하지 않았습니다.
 따라서 현재 Runtime의 Loop/입력/출력에 추가되는 DHT11 Blocking은 없습니다.
 
@@ -523,3 +523,153 @@ Buzzer 제어/의도적 Door 또는 E-Stop Fault/Audible Test를 수행하지 �
 `HARDWARE_VERIFICATION.md`는 수정하지 않았습니다.
 
 **[READY TO COMMIT — HOST VERIFIED]**
+
+---
+
+## 11. DHT11 Hardware Test Harness — 2026-10-12 / HW VERIFIED
+
+사용자가 격리형 Harness에서 연속 정상 Sample **16/16**, INVALID_DATA **0**, Checksum 전부 VALID를 확인했습니다.
+온도 25.8 °C, 습도 44.3–44.5 %RH, 측정 간격 2100 ms, START_MS→DONE_MS 약 23 ms이며 비정상 정지는 없었습니다.
+**DHT11 Driver: HW VERIFIED / Production Runtime Integration: NOT YET VERIFIED**
+실제 결과와 Validation 수정 원인은 [HARDWARE_VERIFICATION.md](HARDWARE_VERIFICATION.md#13-dht11-driver-hardware-verification--2026-10-12)에 기록했습니다.
+
+### 격리 구조
+
+- `HardwareTest/dht11_hardware_test.c/.h`는 기존 DHT11 API만 사용합니다.
+- `DHT11_HARDWARE_TEST` CMake Option은 기본 OFF입니다.
+- 별도 `Dht11Hardware` Preset은 Option을 ON으로 하며 `build/Dht11Hardware`에 출력합니다.
+- `main.c`의 Includes/2/3 USER CODE 영역만 조건부 분기합니다.
+  Harness에서는 `IoRuntime_Init/Poll` 대신 Harness Init/Poll을 호출합니다.
+- CubeMX 초기화 값, `.ioc`, DHT11 Driver API, Production Protocol, Linux 코드는 유지합니다. Decoder의 습도 소수부 검증을 수정했습니다.
+- Buzzer/Pump/Heater/RGB/Safe-State Output API와 Fault 경로를 호출하지 않습니다.
+  기존 Generated GPIO 초기 출력 설정은 유지합니다.
+- Production Linux Controller를 실행하지 않습니다. USART2는 115200 8N1 Debug TX 전용이며
+  Debug Line을 Production Parser에 등록하지 않습니다.
+
+흐름은 Init → 2100 ms 안정화 → Request → Cooperative LOW → Poll/Capture → Debug TX → 다음 요청입니다.
+Driver가 요청 시작 간격 2100 ms 이상을 제한합니다. Start LOW와 Capture 중에는 Debug TX를 호출하지 않습니다.
+HAL UART 송신은 완료된 Sample/Error 출력에만 사용하며 100 ms Timeout이 있습니다.
+송신 실패는 `dht11_hardware_uart_errors`에 누적합니다.
+Init 실패 시 Sample Read 없이 대기하므로 Reset/원인 확인이 필요합니다.
+
+Debug 출력 형식 (실측 결과가 아닌 형식 설명):
+
+```text
+DHT11:HARNESS,INIT=OK,REASON=NONE,STABILIZE_MS=2100,INTERVAL_MS=2100
+DHT11:OK,SEQ=<n>,START_MS=<tick>,DONE_MS=<tick>,TEMP=<value>,HUM=<value>,CHECKSUM=VALID
+DHT11:RESPONSE_TIMEOUT,SEQ=<n>,START_MS=<tick>,DONE_MS=<tick>,REASON=RESPONSE_TIMEOUT,FRAME=PARTIAL,BITS=0,RAW=<bytes>,CHECKSUM_RX=<byte>,CHECKSUM_CALC=<byte>
+```
+
+`OK` Sample은 실제 Driver의 40-bit Capture와 Decode/Checksum 검사가 모두 성공한 경우에만 출력합니다.
+`SEQ`는 실패를 포함한 요청마다 증가합니다. 연속 SEQ의 OK 3개와 START_MS 차이 각각 >=2000 ms를 확인합니다.
+Tick Wrap 시 unsigned 32-bit 차이를 사용합니다. DONE_MS−START_MS에는 Cooperative LOW 대기도 포함되므로
+이를 Capture WCET나 정밀 µs 계측 결과로 해석하지 않습니다.
+
+### Build 및 분리 검증
+
+작업 시작 기준은 `main`, HEAD/origin/main `e8974ee`, Working Tree clean입니다.
+
+Repository Root에서:
+
+```sh
+cd firmware/stm32-equipment-io
+cmake --preset Dht11Hardware
+cmake --build --preset Dht11Hardware
+cd ../..
+cmake --build firmware/stm32-equipment-io/build/Debug
+cmake --build build-refactor -j2
+ctest --test-dir build-refactor --output-on-failure
+```
+
+검증 결과:
+
+- Harness Firmware Build/Link: PASS (FLASH 20,704 B / RAM 2,072 B)
+- Production Debug Firmware Build/Link: PASS
+- Linux Build: PASS
+- CTest: 37/37 PASS (기존 Test 유지, `STM32_DHT11_DIAGNOSTIC_HOST` 추가)
+- Harness ELF: DHT11/Harness 함수 존재, `IoRuntime_*`, `DeviceIo_*`, `IoProtocol_*` 심볼 없음
+- Production ELF: IoRuntime 존재, Harness 없음
+- Production Flash binary: 변경 전과 바이트 단위 동일
+- `main.c` USER CODE 밖 Generated Code: 변경 전과 바이트 단위 동일 (기존 CRLF 유지)
+
+### 사용자 확인 배선 및 현재 연결 상태
+
+사용자가 확인한 구성 (계측/직접 관찰한 결과는 아님):
+
+- VCC: 3.3 V
+- GND: STM32와 공통 GND
+- DATA: PC4
+- 3핀 DHT11 모듈의 내장 Pull-up 사용, 외부 10 kΩ 추가하지 않음
+
+배선 변경은 전원 제거 후 수행합니다. 기존 Door/E-Stop 상태와 출력 비활성 상태도 먼저 확인합니다.
+최초 준비 시 ST-LINK/VCP가 연결되지 않았으나 이후 사용자가 실제 Hardware 측정 성공을 확인했습니다.
+
+### WSL → ST-LINK Flash 절차 (사용자 실행)
+
+기존 Hardware 검증 로그에서 확인한 STM32CubeProgrammer 2.23.0 경로를 사용합니다.
+Windows의 `usbipd list`에서 현재 NUCLEO BUSID를 확인하고
+`usbipd attach --wsl --busid <현재 BUSID>`로 연결합니다. 이전 BUSID `3-4`를 현재 값으로 가정하지 않습니다.
+
+WSL의 Repository Root에서 먼저 연결을 확인합니다.
+
+```sh
+cd /home/kccistc/projects/cpp-equipment-controller
+DHT11_PROGRAMMER=/home/kccistc/.local/share/stm32cube/bundles/programmer/2.23.0/bin/STM32_Programmer_CLI
+"$DHT11_PROGRAMMER" -l stlink-only
+ls -l /dev/ttyACM0
+pgrep -af '(^|/)equipment_controller([[:space:]]|$)'
+fuser /dev/ttyACM0
+```
+
+`pgrep`는 Controller가 없으면 출력 없이 종료코드 1을 반환합니다.
+Controller나 다른 Serial Reader가 사용 중이면 해당 세션을 정상 종료한 뒤 진행합니다.
+ST-LINK는 기존 NUCLEO Serial `066FFF485277504867174240`와 일치하는지 확인합니다.
+다른 보드라면 아래 명령을 그대로 실행하지 않습니다.
+
+배선/장치 확인 후 Harness binary만 Flash합니다 (실행 시 보드 Firmware가 Harness로 교체됨).
+
+```sh
+mkdir -p build/hardware-verification/dht11
+set -o pipefail
+"$DHT11_PROGRAMMER" -c port=SWD sn=066FFF485277504867174240 mode=UR reset=HWrst \
+  -d firmware/stm32-equipment-io/build/Dht11Hardware/dht11-hardware-test.bin 0x08000000 \
+  -v -rst 2>&1 | tee build/hardware-verification/dht11/flash.log
+```
+
+명령 종료코드 0과 실제 Programming/Verification 성공 메시지를 확인합니다.
+실패한 Flash는 성공으로 기록하지 않습니다. 위 명령은 준비 단계에서 실행하지 않았습니다.
+
+### UART 관찰과 판정 절차 (사용자 실행)
+
+Controller를 실행하지 않은 상태에서 아래 명령으로 UART를 수신합니다. MCU로 명령을 보내지 않습니다.
+
+```sh
+stty -F /dev/ttyACM0 115200 raw -echo cs8 -cstopb -parenb -crtscts -ixon -ixoff
+mkdir -p build/hardware-verification/dht11
+timeout 20s cat /dev/ttyACM0 | tee build/hardware-verification/dht11/uart.log
+```
+
+20초 후 `timeout` 종료코드 124는 예정된 관찰 종료입니다 (pipefail 사용 시 Pipeline에도 반영).
+초기 Boot Line/안정화부터 확인하려면 수신 시작 후 NUCLEO Reset Button을 한 번 누릅니다.
+Reset에 따른 SEQ 재시작을 구분하고 동일 Boot의 연속 Sample을 사용합니다.
+
+사용자가 확인할 항목:
+
+1. Init OK와 안정화 후 최초 정상 Sample.
+2. 연속 SEQ의 `DHT11:OK` 최소 3회, 매번 TEMP/HUM과 CHECKSUM=VALID.
+3. 인접 START_MS 차이 각각 >=2000 ms, 계속 측정하며 비정상 정지 없음.
+4. Buzzer/Pump/Heater/RGB의 의도치 않은 활성화 없음. 활성화되면 중단하고 회귀 문제로 보고.
+5. 안전하게 가능한 경우에만 전원 제거 → Sensor 배선 분리 → 재전원으로 Timeout 확인.
+   정상 배선 복구도 전원을 제거한 상태에서 수행. 의도적인 Door/E-Stop Fault와 Audible Test는 제외.
+
+실제 OK Sample과 습도 Validation에 의한 INVALID_DATA 원인을 확인했고, 수정 후 연속 16회 측정에 성공했습니다.
+`[DHT11 DRIVER — HW VERIFIED]` 판정은 격리형 Harness의 Driver 통신에 한정합니다.
+RESPONSE_TIMEOUT / DATA_TIMEOUT / CHECKSUM_ERROR의 실제 Sensor 오류 시험은 **NOT VERIFIED**로 남깁니다.
+
+통신 성공은 GPIO 전환/Response/Frame/Checksum/Timing의 기능적 검증입니다.
+Production Runtime/Linux 동시 동작, UART RX 부하 안정성, Safety Latency, Runtime WCET,
+TIM5 1 µs 정밀 오차, 온습도 절대 정확도/Calibration은 검증 범위에 포함하지 않습니다.
+
+Harness 비활성화는 기본 Debug/Release Preset 또는 `-DDHT11_HARDWARE_TEST=OFF`로 Build합니다.
+**Build만으로 보드 Firmware가 복구되지는 않습니다.** 운영 복귀는 별도 확인 후 Production ELF를 다시 Flash해야 합니다.
+시험 완료 후에도 Harness가 Flash된 보드를 Production Runtime이 동작하는 보드로 취급하지 않습니다.
