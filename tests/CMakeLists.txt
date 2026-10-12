@@ -91,3 +91,9 @@ target_include_directories(test_stepper PRIVATE firmware/fakes ${FIRMWARE_APP}/I
 add_test(NAME STM32_STEPPER_HOST COMMAND test_stepper)
 add_test(NAME STM32_STEPPER_BENCH_HOST COMMAND test_stepper --bench)
 set_tests_properties(STM32_STEPPER_HOST STM32_STEPPER_BENCH_HOST PROPERTIES TIMEOUT 5)
+
+add_executable(test_runtime_recovery transport/test_runtime_recovery.cpp)
+target_link_libraries(test_runtime_recovery PRIVATE controller_runtime util)
+target_link_options(test_runtime_recovery PRIVATE -Wl,--wrap=write)
+add_test(NAME LINUX_RUNTIME_RECOVERY_HOST COMMAND test_runtime_recovery)
+set_tests_properties(LINUX_RUNTIME_RECOVERY_HOST PROPERTIES TIMEOUT 10)

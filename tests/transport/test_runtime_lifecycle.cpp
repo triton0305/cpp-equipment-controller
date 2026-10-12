@@ -38,7 +38,7 @@ namespace
 
     ~Session()
     {
-      // Only failures/timeouts terminate the child; success requires natural exit.
+      // Failures/timeouts force termination; success requires graceful SIGTERM exit.
       if (child > 0)
       {
         kill(child, SIGKILL);
@@ -131,7 +131,12 @@ int main(int argc, char* argv[])
       input += message + '\n';
     }
 
-    // Keep the raw slave open so input can queue before the runtime opens it.
+    // Wait for the opening safe refresh: openPort intentionally flushes old RX.
+    pollfd initial{session.master, POLLIN, 0};
+    require(poll(&initial, 1, 2000) > 0 && (initial.revents & POLLIN),
+            "Runtime did not send opening safe refresh");
+    char opening[512];
+    require(read(session.master, opening, sizeof(opening)) > 0, "Cannot drain opening refresh");
     std::size_t sent = 0;
     while (sent < input.size())
     {
@@ -147,7 +152,9 @@ int main(int argc, char* argv[])
     }
 
     const auto deadline = std::chrono::steady_clock::now() +
-                          std::chrono::seconds(15);
+                          std::chrono::milliseconds(10200);
+    bool terminationSent = false;
+    auto exitDeadline = deadline + std::chrono::seconds(3);
     int status = 0;
     while (true)
     {
@@ -155,6 +162,7 @@ int main(int argc, char* argv[])
       if (result == session.child)
       {
         session.child = -1;
+        require(terminationSent, "Runtime exited before explicit termination");
         break;
       }
       if (result < 0 && errno == EINTR)
@@ -162,8 +170,13 @@ int main(int argc, char* argv[])
         continue;
       }
       require(result >= 0, "waitpid failed");
-      require(std::chrono::steady_clock::now() < deadline,
-              "Runtime did not exit naturally within 15 seconds");
+      const auto now = std::chrono::steady_clock::now();
+      if (!terminationSent && now >= deadline)
+      {
+        require(kill(session.child, SIGTERM) == 0, "Cannot terminate runtime");
+        terminationSent = true;
+      }
+      require(now < exitDeadline, "Runtime did not exit gracefully after SIGTERM");
 
       pollfd descriptor{session.master, POLLIN, 0};
       const int ready = poll(&descriptor, 1, 50);
@@ -187,7 +200,11 @@ int main(int argc, char* argv[])
     const std::string stderrText = readCapture(errors.get());
     require(WIFEXITED(status) && WEXITSTATUS(status) == 0,
             "Runtime did not exit with code 0\nSTDERR:\n" + stderrText);
-    require(stderrText.empty(), "Unexpected STDERR:\n" + stderrText);
+    require(stderrText.find("Sensor stale") != std::string::npos,
+            "Silent sensor stream did not fault\n" + stderrText);
+    require(stderrText.find("UART read failed") == std::string::npos &&
+            stderrText.find("UART write failed") == std::string::npos,
+            "Unexpected UART failure\n" + stderrText);
 
     std::vector<std::string> accepted;
     int stateLines = 0;
@@ -216,7 +233,7 @@ int main(int argc, char* argv[])
     require(stateLines == 5, "Expected five controller state lines\n" + stdoutText);
 
     std::cout << "[TEST 28] Runtime lifecycle PASS: five sensor acceptances, "
-              << "five state lines, empty stderr, natural exit code 0\n";
+              << "five state lines, stale fault, alive beyond 10 seconds, SIGTERM exit code 0\n";
     return 0;
   }
   catch (const std::exception& error)

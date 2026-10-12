@@ -1,2 +1,5 @@
+add_library(controller_runtime controller_runtime.cpp)
+target_include_directories(controller_runtime PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(controller_runtime PUBLIC equipment_core equipment_protocol equipment_transport)
 add_executable(equipment_controller main.cpp)
-target_link_libraries(equipment_controller PRIVATE equipment_core equipment_protocol equipment_transport)
+target_link_libraries(equipment_controller PRIVATE controller_runtime)

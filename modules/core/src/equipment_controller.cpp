@@ -91,7 +91,7 @@ void EquipmentController::handleStart()
     return;
   }
 
-  if (!sensor_state_.door_closed)
+  if (!sensor_state_.door_closed || !sensor_state_.communication_ok)
   {
     return;
   }
@@ -222,6 +222,14 @@ void EquipmentController::advanceSequence()
 
 void EquipmentController::checkInterlocks()
 {
+  // Communication loss also faults an idle runtime. Preserve an existing error
+  // and the established E-stop priority in Ready/Run.
+  if (state_ == EquipmentState::Idle && !sensor_state_.communication_ok)
+  {
+    enterError(AlarmCode::CommunicationFault);
+    return;
+  }
+
   if (state_ != EquipmentState::Ready &&
       state_ != EquipmentState::Run)
   {

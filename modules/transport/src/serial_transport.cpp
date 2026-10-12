@@ -57,6 +57,14 @@ bool SerialTransport::openPort(const std::string& device)
     return false;
   }
 
+  // openPort already clears the application line buffer through closePort.
+  // Also discard input queued by the OS before this connection was established.
+  if (tcflush(fd_, TCIFLUSH) != 0)
+  {
+    closePort();
+    return false;
+  }
+
   return true;
 }
 
@@ -92,6 +100,7 @@ bool SerialTransport::writeAll(const std::string& data)
 
   while (written < data.size())
   {
+    if (std::chrono::steady_clock::now() >= deadline) return false;
     const ssize_t result = ::write(
       fd_,
       data.data() + written,
@@ -168,7 +177,8 @@ bool SerialTransport::readAvailable(std::string& data)
 
   char buffer[256];
 
-  while (true)
+  // Bound one read pass so continuous noise cannot starve runtime deadlines.
+  while (data.size() < 4096U)
   {
     pollfd pfd{};
     pfd.fd = fd_;
@@ -227,6 +237,7 @@ bool SerialTransport::readAvailable(std::string& data)
     closePort();
     return false;
   }
+  return true;
 }
 
 bool SerialTransport::readLines(

@@ -52,7 +52,26 @@ int main(int argc, char* argv[])
   }
 
   close(slave);
-  usleep(500000);
+  // Opening sends a safe refresh before accepting fresh sensor input.
+  std::string opening;
+  const std::string opening_expected =
+    "\nPUMP:OFF\nHEATER:OFF\nVALVE:CLOSED\nBUZZER:OFF\nRUN_LED:OFF\nERROR_LED:OFF\n";
+  const auto opened_by = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (opening.size() < opening_expected.size() && std::chrono::steady_clock::now() < opened_by)
+  {
+    pollfd pfd{master, POLLIN, 0};
+    if (poll(&pfd, 1, 100) > 0 && (pfd.revents & POLLIN))
+    {
+      char buffer[512];
+      const auto n = read(master, buffer, sizeof(buffer));
+      if (n > 0) opening.append(buffer, static_cast<std::size_t>(n));
+    }
+  }
+  if (opening != opening_expected)
+  {
+    std::cerr << "Invalid opening safe refresh\n";
+    kill(pid, SIGKILL); waitpid(pid, nullptr, 0); close(master); return 1;
+  }
 
   const std::string messages =
     "TEMP:32.5\n"

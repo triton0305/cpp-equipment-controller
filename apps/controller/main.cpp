@@ -1,85 +1,34 @@
 #include <chrono>
+#include <csignal>
 #include <iostream>
-#include <string>
 #include <thread>
-#include <vector>
 
-#include "ascii_protocol.hpp"
-#include "equipment_controller.hpp"
-#include "serial_transport.hpp"
+#include "controller_runtime.hpp"
+
+namespace
+{
+  volatile std::sig_atomic_t stopping = 0;
+  void stop(int) { stopping = 1; }
+}
 
 int main(int argc, char* argv[])
 {
   if (argc != 2)
   {
-    std::cerr << "Usage: " << argv[0]
-              << " <serial_device>\n";
+    std::cerr << "Usage: " << argv[0] << " <serial_device>\n";
     return 1;
   }
-
-  SerialTransport serial;
-
-  if (!serial.openPort(argv[1]))
-  {
-    std::cerr << "Failed to open serial port: "
-              << argv[1] << '\n';
-    return 1;
-  }
+  std::signal(SIGINT, stop);
+  std::signal(SIGTERM, stop);
+  std::cout << std::unitbuf;
 
   EquipmentController controller;
-  SensorState sensor = controller.getSensorState();
-
-  const auto deadline =
-    std::chrono::steady_clock::now() +
-    std::chrono::seconds(10);
-
-  while (std::chrono::steady_clock::now() < deadline)
+  ControllerRuntime runtime(argv[1], controller);
+  while (!stopping)
   {
-    std::vector<std::string> lines;
-
-    if (!serial.readLines(lines))
-    {
-      std::cerr << "UART read failed\n";
-      return 1;
-    }
-
-    for (const std::string& line : lines)
-    {
-      if (!AsciiProtocol::parseSensorLine(line, sensor))
-      {
-        std::cerr << "Invalid SENSOR line: "
-                  << line << '\n';
-        continue;
-      }
-
-      controller.setSensorState(sensor);
-      controller.update();
-
-      const std::string output =
-        AsciiProtocol::serializeDeviceState(controller.getDeviceState());
-
-      if (!serial.writeAll(output))
-      {
-          std::cerr << "UART write failed\n";
-          return 1;
-      }
-
-      std::cout << "SENSOR accepted: " << line << '\n';
-
-      std::cout << "Controller state: "
-                << static_cast<int>(controller.getState())
-                << " | Step: "
-                << static_cast<int>(controller.getSequenceStep())
-                << " | Alarm: "
-                << static_cast<int>(controller.getAlarmCode())
-                << '\n';
-    }
-
-    std::this_thread::sleep_for(
-      std::chrono::milliseconds(10)
-    );
+    runtime.poll();
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
-
-  serial.closePort();
+  runtime.shutdown();
   return 0;
 }
