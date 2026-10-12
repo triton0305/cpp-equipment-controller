@@ -16,35 +16,39 @@
 
 # Equipment Controller
 
-**STM32의 스위치·ADC 입력을 UART로 받아 공정 상태와 인터록을 판단하고, 장비 출력을 제어하는 C++17 Controller입니다.**
+**STM32에서 수집한 스위치·ADC·DHT11 센서 데이터를 UART로 받아 공정 상태와 인터록을 판단하고, 장비 출력을 제어하는 C++17 Controller입니다.**
 
-Linux / WSL에서 State Machine, Sequence, Alarm과 출력 상태를 관리합니다. STM32는 Door·E-Stop·ADC 입력을 수집하고, Controller가 보낸 명령을 GPIO 출력에 적용합니다. 펌프·히터 출력은 LED로 구성했으며, RGB LED와 부저로 RUN / ERROR 상태를 표시합니다.
+Linux / WSL에서 State Machine, Sequence, Alarm과 출력 상태를 관리합니다. STM32는 Door·E-Stop·Pressure ADC·DHT11 입력을 수집하고, Controller가 보낸 명령을 GPIO 출력에 적용합니다. 펌프·히터 동작은 LED로 구성했으며, RGB LED와 부저를 통해 IDLE / READY / RUN / ERROR 상태와 Alarm을 표시합니다.
 
 ## Development History
 
 | 날짜 | 개발 내용 |
 |---|---|
-| [2026.10.08](https://github.com/triton0305/equipment-controller/commit/c5d6953605a620da03defa46681c7e653f1c9e39) | C++ Controller · State / Sequence · 6종 Fault · Logging · ASCII Protocol / Serial Transport · STM32 GPIO / ADC / UART Runtime 구현 · CTest 34개 및 실제 보드 E2E 검증 |
-| [2026.10.12](https://github.com/triton0305/equipment-controller/commit/56088d3) | DHT11 Driver · STM32 Command-loss Fail-safe · Linux UART Recovery · Hardware Verification · CTest 41/41 PASS |
+| [2026.10.08](https://github.com/triton0305/equipment-controller/commit/c5d6953605a620da03defa46681c7e653f1c9e39) | C++ Controller · State / Sequence · Logging · ASCII Protocol / Serial Transport · STM32 GPIO / ADC / UART Runtime 구현 · 초기 Fault 처리 및 실제 보드 E2E 검증 |
+| [2026.10.12](https://github.com/triton0305/equipment-controller/commit/b2217e9) | DHT11 Production 통합 · STM32 Command-loss Fail-safe · Linux UART Recovery · 5초 READY qualification · 30초 RUN · Cycle Re-arm · Critical Sensor Safety · CTest 45/45 PASS · 주요 Hardware Verification |
 
 ## Validation
 
-NUCLEO-F411RE와 WSL을 연결해 **실제 입력 → STM32 → UART → C++ Controller → UART → GPIO 출력** 경로를 검증했습니다. 기존 Board / Door / E-Stop E2E 항목은 2026.10.08 실물 검증 기록 기준입니다. 최신 Host 결과는 **41/41 PASS**이며, 이후 검증 상태는 아래에 구분했습니다.
+NUCLEO-F411RE와 WSL을 연결해 **실제 센서 입력 → STM32 → UART → C++ Controller → UART → GPIO 출력** 경로를 검증했습니다. 최신 Software Verification은 **CTest 45/45 PASS**이며, 실제 보드에서는 DHT11 Production 경로와 READY / RUN / Cycle Re-arm, E-Stop·Door Interlock, Pressure Critical, RESET 동작을 확인했습니다.
 
 | 검증 범위 | 확인 항목 | 결과 |
 |---|---|:---:|
-| Controller | 정상 Sequence · 6종 Fault · STOP / RESET · 안전 출력 · 반복 Fault | PASS |
-| Protocol / Transport | ASCII 파싱·직렬화 · 분할 수신 · 긴 입력 복구 · PTY 연결 해제·재연결 | PASS |
-| Runtime / Logging | UART 실행·종료 · Console / File Logger · 이벤트 내용·순서·횟수 | PASS |
-| Build / 자동 테스트 | Linux / STM32 Build · Controller / Protocol / Transport / STM32 Host | **41/41 PASS** |
-| Board / I/O | Flash readback · Boot · USART2 양방향 · GPIO · Door / E-Stop · ADC | **HW VERIFIED** |
-| Door Fault E2E | 실제 Door 변화 → Controller 판단 → UART 명령 → GPIO 출력 | **HW VERIFIED** |
-| RUN-state E-Stop E2E | 실제 E-Stop → RUN에서 ERROR 전환 → 펌프·히터 OFF / 빨강·부저 ON | **HW VERIFIED** |
-| DHT11 Driver | 격리형 Harness에서 실제 센서 통신 · Production 통합 제외 | **HW VERIFIED** |
+| Controller | READY qualification · 단계별 Sequence · 30초 RUN · Cycle Re-arm · STOP / RESET · Critical Sensor Safety | **PASS** |
+| Protocol / Transport | ASCII 파싱·직렬화 · 분할 수신 · 긴 입력 복구 · PTY 연결 해제·재연결 | **PASS** |
+| Runtime / Logging | UART 실행·종료 · Sensor freshness · 안전 출력 · Console / File Logger · 1초 STATUS | **PASS** |
+| Build / 자동 테스트 | Host Build · STM32 Debug · DHT11 Hardware target · Stepper Hardware target · Full CTest | **45/45 PASS** |
+| Board / I/O | Flash · Boot · USART2 양방향 · GPIO · Door / E-Stop · Pressure ADC | **HW VERIFIED** |
+| DHT11 Production E2E | 실제 DHT11 → STM32 → TEMP / HUMIDITY UART → Linux Parser / SensorState → STATUS | **HW VERIFIED** |
+| READY / RUN | IDLE Blue · 약 5초 후 READY Yellow · START · RUN Green · Pump / Heater ON · 약 30초 후 자동 종료 | **HW VERIFIED** |
+| Cycle Re-arm | RUN 종료 후 Door OPEN → CLOSED → 새 READY qualification | **HW VERIFIED** |
+| Door Interlock | RUN 중 Door OPEN → DoorOpen ERROR · Pump / Heater OFF | **HW VERIFIED** |
+| E-Stop Interlock | RUN 중 E-Stop → ERROR · Pump / Heater OFF · Error 상태 유지 · RESET 복귀 | **HW VERIFIED** |
+| Pressure Critical | Pressure ADC ≥3900의 새 유효 측정 2회 → PressureCritical · ERROR · Pump / Heater OFF | **HW VERIFIED** |
+| RESET | Fault 해소 후 안전 조건 확인 · B1 USER / RESET command → IDLE 복귀 · 새 READY qualification | **HW VERIFIED** |
 | Communication Safety Phase 1 | STM32 command-loss 출력 차단 · latch · 안전 재동기화 · 재활성화 | **HOST / HW VERIFIED** |
-| Communication Safety Phase 2 | Linux UART 장애 · Sensor stale · 재연결 · 자동 RUN 재개 방지 | **HOST VERIFIED / HW E2E 미검증** |
+| Linux UART Recovery | UART read/write 장애 · Sensor stale · 재연결 · 자동 RUN 재개 방지 | **HOST VERIFIED** |
 
-Phase 1의 정확한 timeout latency는 계측 장비로 측정하지 않았습니다. Stepper 실물 구동과 Phase 2 USB 재연결 Hardware E2E는 최종 검증 완료 범위에 포함하지 않습니다.
+Critical Sensor Safety는 Temperature ≤5°C / ≥50°C, Humidity ≤15% / ≥90%, Pressure ADC ≤200 / ≥3900을 기준으로 하며, **같은 센서·같은 방향의 새 유효 측정 2회 연속**일 때 ERROR로 전환합니다.
 
 <details>
 <summary><strong>자동 테스트 · 실물 검증 · 트러블슈팅 상세</strong></summary>
