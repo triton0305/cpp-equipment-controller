@@ -54,6 +54,7 @@ add_executable(test_io_runtime firmware/test_io_runtime.cpp
 target_include_directories(test_io_runtime PRIVATE firmware/fakes ${FIRMWARE_APP}/../Core/Inc)
 target_link_libraries(test_io_runtime PRIVATE stm32_io_protocol equipment_protocol)
 add_test(NAME STM32_RUNTIME_HOST COMMAND test_io_runtime)
+add_test(NAME STM32_COMMUNICATION_FAILSAFE_HOST COMMAND test_io_runtime --failsafe)
 
 add_executable(test_uart_io firmware/test_uart_io.c ${FIRMWARE_APP}/Src/uart_io.c)
 target_include_directories(test_uart_io PRIVATE firmware/fakes ${FIRMWARE_APP}/Inc)

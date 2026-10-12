@@ -6,6 +6,10 @@
 실물 보드 검증 결과는 [HARDWARE_VERIFICATION.md](HARDWARE_VERIFICATION.md)에 정리했습니다.  
 RUN 상태 E-Stop E2E를 포함한 실제 입력·출력 검증 결과를 확인할 수 있습니다.
 
+**최신 변경:** Communication Safety Phase 1은 Host 검증 완료 / Hardware 미검증입니다.
+기존 HW VERIFIED 기록은 이전 동작에 대한 결과이며 신규 fail-safe 검증을 의미하지 않습니다.
+현재 정책과 검증 결과는 [12절](#12-communication-safety-phase-1--2026-10-12)에 기록합니다.
+
 ## 1. 검증 개요
 
 STM32 Runtime의 GPIO, ADC, UART, ASCII Protocol과 Foreground Runtime을 구현하고 Host Test와 실제 보드에서 동작을 확인했습니다.
@@ -104,7 +108,7 @@ UART 입력을 Line 단위로 조합하고 완성된 Command를 처리합니다.
 - Oversized Line 복구
 - Binary / RX Error Line 복구
 
-완성된 정상 Line을 기준으로 Command를 실행합니다.
+완성된 정상 Line을 파싱합니다. Phase 1부터 Pump/Heater/RUN ON은 12절의 전체 갱신 완료 조건으로 실행하며, OFF와 Buzzer/ERROR 명령은 즉시 적용합니다.
 
 ---
 
@@ -112,9 +116,9 @@ UART 입력을 Line 단위로 조합하고 완성된 Command를 처리합니다.
 
 `IoRuntime_Poll()`은 반복 호출되며 다음 작업을 처리합니다.
 
-1. USART2 RX 처리
-2. ASCII Command 처리
-3. ADC 상태 확인 및 Sample 수집
+1. Control timeout 및 갱신 조립 시간 검사
+2. ADC 상태 확인 및 Sample 수집
+3. USART2 RX 및 ASCII Command 처리
 4. Sensor Report 생성
 5. USART2 TX 처리
 
@@ -673,3 +677,150 @@ TIM5 1 µs 정밀 오차, 온습도 절대 정확도/Calibration은 검증 범�
 Harness 비활성화는 기본 Debug/Release Preset 또는 `-DDHT11_HARDWARE_TEST=OFF`로 Build합니다.
 **Build만으로 보드 Firmware가 복구되지는 않습니다.** 운영 복귀는 별도 확인 후 Production ELF를 다시 Flash해야 합니다.
 시험 완료 후에도 Harness가 Flash된 보드를 Production Runtime이 동작하는 보드로 취급하지 않습니다.
+
+
+---
+
+## 12. Communication Safety Phase 1 — 2026-10-12
+
+**HOST VERIFIED / HARDWARE NOT YET VERIFIED**
+
+시작 기준: `main`, HEAD/origin/main `e7acaee`, Working Tree clean, 기존 CTest 37개.
+Linux의 State Machine/Sequence/Fault/Interlock 판단은 그대로 두고 STM32에 통신 유효성 및 물리 출력 차단만 추가했습니다.
+DHT11 Driver, Production 통합, CubeMX 설정, Linux 코드, wire format은 변경하지 않았습니다.
+
+### 구현 전 확인 및 갱신 단위
+
+- Linux `main.cpp`는 정상 Sensor Line마다 `controller.update()` 후 전체 DeviceState를 송신합니다.
+  변경된 출력만 송신하는 구조가 아니며 순서는 아래 6개로 고정되어 있습니다.
+- 기존 STM32는 각 정상 Line을 즉시 GPIO에 적용했습니다. 출력 캐시는 `run_led`, `error_led`뿐이며,
+  Pump/Heater/Buzzer는 별도 캐시 없이 DeviceIo를 통해 GPIO에 기록합니다.
+- `DeviceIo_SetSafeState()`는 Pump/Heater/Buzzer/RGB/Stepper coil을 모두 OFF로 만듭니다.
+  초기화에는 계속 사용하지만 통신 Timeout에서는 ERROR/Buzzer를 보존해야 하므로 재사용하지 않습니다.
+- Valve는 인식 및 `io_runtime_unsupported_valve_commands` 증가만 수행합니다.
+  초기 SafeState에서 PC0–PC3 coil을 OFF로 설정한 뒤 이를 활성화하는 Runtime 경로가 없습니다.
+
+**Complete control refresh**는 다음 순서의 유효한 6개 Line이 중간 오류 없이 완성되는 것입니다.
+
+```text
+PUMP → HEATER → VALVE → BUZZER → RUN_LED → ERROR_LED
+```
+
+각 Line은 기존 parser의 정확한 값과 LF/CRLF 규칙을 따라야 합니다.
+PUMP Line 완료 시점부터 ERROR_LED Line 완료 시점까지 경과 시간이
+`IO_CONTROL_REFRESH_WINDOW_MS = 250 ms` **미만**이어야 합니다.
+중복/순서 오류/누락, malformed/unknown/empty Line, binary/oversize 입력 및 UART 오류는 진행 중 조립을 무효화합니다.
+새 PUMP Line은 항상 새 후보를 시작합니다. Fragmented Line은 허용하지만 단독으로 freshness를 갱신하지 않습니다.
+조립 만료 또는 통신 Timeout 때 미완성 Line이 있으면 다음 LF까지 버려 경계 전후 조각의 결합을 막습니다.
+조립 실패 자체가 즉시 전체 통신 Fault를 발생시키지는 않으며 마지막 유효 갱신의 Timeout은 계속 진행합니다.
+
+**Valid control refresh / freshness 갱신 조건:**
+
+- 동기화 완료 상태에서는 complete refresh가 완료된 Poll의 Tick으로 `last_control_refresh`를 갱신합니다.
+- 초기화/Timeout latch 상태에서는 complete이면서 Pump OFF, Heater OFF, RUN_LED OFF,
+  **VALVE CLOSED**인 경우에만 유효 갱신으로 인정하고 latch를 해제합니다.
+- Buzzer/ERROR는 ON/OFF 모두 안전 동기화에 허용합니다. 통신 전용 Fault 표시 정책은 추가하지 않았습니다.
+- 일부 명령, LED만 반복, 노이즈, Heartbeat/unknown Line 및 latch 중 unsafe complete refresh는 freshness를 갱신하지 않습니다.
+
+### Timeout 선정과 출력 적용
+
+상수는 `App/Inc/io_runtime.h`에서 관리합니다.
+
+| 상수 | 초기값 | 근거 |
+|---|---:|---|
+| `IO_CONTROL_TIMEOUT_MS` | 1000 ms | Sensor report 100 ms, Linux loop sleep 10 ms와 scheduler/USB/UART 지연 여유; 정상 보고 약 10주기 |
+| `IO_CONTROL_REFRESH_WINDOW_MS` | 250 ms | 6 Line 63–70 byte의 115200 8N1 전송 약 5.5–6.1 ms 및 host/USB 분할 전달 여유; 무기한 조각 누적 방지 |
+
+센서 2–3 Line마다 출력 묶음이 발생할 수 있어 정상적으로 약 100 ms마다 2–3 묶음이 전달됩니다.
+STM32는 고정 주기 sleep 없이 foreground에서 Poll하며 매 Poll RX/TX 각각 최대 32 byte를 처리합니다.
+Production에는 DHT11 blocking 호출이 없습니다. 실제 Poll 최장 간격/USB jitter는 아직 계측하지 않았습니다.
+Linux `writeAll()`의 최대 대기 예산도 1000 ms이므로 심한 송신 정체에서는 STM32 latch가 먼저/동시에 걸릴 수 있습니다.
+이는 허용된 안전 동작이며 전송 함수 성공이 STM32 적용 성공을 의미하지 않습니다.
+두 상수는 **HW 검증으로 조정할 초기값**이며 허용 가능한 장비 위험 시간의 인증값이 아닙니다.
+
+`(uint32_t)(now - last_control_refresh) >= 1000`인 첫 Poll에서 RX 처리보다 먼저 차단합니다.
+따라서 T−1은 출력 유지, T와 T+1은 latch 상태입니다. Tick wrap-around도 unsigned 차이로 처리합니다.
+이는 HAL Tick이 진행하고 Poll이 계속 호출되는 조건이며 실제 차단 시점에는 Poll 지연이 추가됩니다.
+
+- Pump(PB7), Heater(PA6), RUN Green(PB5): OFF.
+- `run_led` 캐시도 false로 바꾸므로 이후 ERROR 명령이 과거 RUN ON을 복원하지 않습니다.
+- ERROR Red와 Buzzer: Timeout 자체로 변경하지 않고 이후 Linux 명령을 계속 적용합니다.
+- Valve: 구동 미지원 유지, 초기화된 coil OFF 유지.
+- 수집 중 후보를 무효화하고 `io_runtime_control_valid=false`, `io_runtime_failsafe_latched=true`로 전환합니다.
+
+초기화 직후에도 같은 invalid/latched 상태이며 `DeviceIo_SetSafeState()`의 기존 전체 OFF를 유지합니다.
+Pump/Heater/RUN의 **OFF 명령은 언제나 즉시** 적용하고 **ON은 동기화된 상태의 complete refresh 완료 시에만** 적용합니다.
+Buzzer/ERROR와 Valve 수신 계수는 기존 Line 단위 동작을 유지합니다.
+따라서 정상 ON 적용에는 묶음 끝까지의 지연이 추가됩니다. Linux Protocol/State Machine을 변경하지 않는 의도적인 안전 정책입니다.
+새 `pending` 배열은 조립용 후보이며 실제 GPIO 캐시가 아닙니다. 전체 후보의 6개 값을 모두 덮어쓴 뒤에만 읽습니다.
+
+### Latch 해제
+
+1. Pump/Heater/RUN OFF, Valve CLOSED인 안전한 complete refresh 수신.
+2. 그 묶음의 OFF는 이미 즉시 적용되어 있음.
+3. 동기화/유효 상태로 전환하고 latch 해제. 이전 ON 후보는 재적용하지 않음.
+4. **이후 별도의 complete refresh**부터 ON 허용. 단독 ON은 동기화 이후에도 적용하지 않음.
+
+Timeout 이후 Linux가 unsafe 출력 묶음만 계속 송신하면 latch는 계속 유지됩니다.
+Linux는 먼저 안전 출력을 송신해야 하며 이 단계에서는 reconnect/ACK/자동 복구를 추가하지 않았습니다.
+Debugger에서 `io_runtime_control_valid`, `io_runtime_failsafe_latched`를 확인할 수 있으나 wire 응답은 없습니다.
+
+### Host 테스트 및 빌드
+
+`STM32_COMMUNICATION_FAILSAFE_HOST`를 추가했습니다. 실제 Runtime/DeviceIo C 코드와 Linux serializer,
+Fake HAL GPIO 및 제어 가능한 uint32 Tick을 사용하며 기존 `STM32_RUNTIME_HOST`의 fake를 공유합니다.
+기존 TX backpressure 검증은 단독 PUMP ON 대신 전체 출력 묶음을 보내 새 ON 적용 정책을 반영합니다.
+
+검증 범위:
+
+- 정상/반복 complete refresh, 최초 동기화, 부분 ON 보류, 즉시 OFF.
+- T−1/T/T+1, 무수신, malformed/incomplete/unknown/binary/oversized 입력 반복.
+- Pump 또는 LED만 반복, 각 6개 명령의 개별 누락, 순서 오류/중복 및 UART 오류.
+- Timeout 후 늦은 Pump/Heater/RUN ON 거부, unsafe complete 및 부분 safe로 latch 해제 불가.
+- 각 critical ON/Valve OPEN의 독립적인 동기화 거부, ERROR/Buzzer ON인 safe refresh 허용.
+- safe complete 후 latch 해제 및 과거 ON 재적용 없음, 다음 complete에서 ON 복구.
+- GPIO/LED cache 일치, ERROR/Buzzer 보존, Valve coil OFF, TX backpressure 회귀.
+- 250 ms 조립 시간 W−1/W/W+1, 만료 중 fragmented Line 폐기, CRLF/bytewise 수신 및 새 PUMP로 재시작.
+- Deadline에 도착한 unsafe 묶음 거부, 두 시간 제한의 uint32 wrap-around.
+
+Repository Root에서 실행:
+
+```sh
+cmake -S . -B build-refactor
+cmake --build build-refactor -j2
+ctest --test-dir build-refactor --output-on-failure
+cd firmware/stm32-equipment-io
+cmake --preset Debug -DDHT11_HARDWARE_TEST=OFF
+cmake --build --preset Debug
+cd ../..
+git diff --check
+```
+
+결과: **38/38 CTest PASS** (기존 37개 유지 + 신규 1개), Linux/STM32 Host Build PASS,
+Production ARM Debug Build/Link PASS (FLASH 20,104 B / RAM 2,160 B), `git diff --check` PASS.
+기존 Protocol/Runtime/Controller/UART/DHT11 테스트 회귀 없음. Hardware Test/Flash는 수행하지 않았습니다.
+
+### 현재 한계와 별도 Hardware Verification
+
+Line-based protocol에는 Session ID/Sequence/ACK/Checksum/Atomic Snapshot 경계가 없습니다.
+순서와 시간 제한은 최소 수신 조건일 뿐 각 Line이 동일 Linux update에서 생성되었다는 증명은 아닙니다.
+전체 유효 묶음 형태로 재생되는 stale 데이터나 우연히 문법에 맞는 corruption을 구분할 수 없습니다.
+안전 묶음 후 오래된 ON 전체 묶음이 도착하면 새 묶음으로 인정될 수 있습니다.
+타임스탬프는 STM32가 Line을 소비하는 시각으로, Linux 생성/USB queue 진입 시각을 알 수 없습니다.
+또한 GPIO는 순차 호출이며 OFF/Buzzer/ERROR는 Line마다 적용하므로 atomic output snapshot을 보장하지 않습니다.
+
+HAL Tick 정지, MCU/foreground 정지에는 이 소프트웨어 timeout이 동작하지 않습니다.
+UART는 SR/DR polling으로 IRQ/DMA ring buffer가 없어 Poll 지연에 따른 ORE 가능성이 남습니다.
+이 제약 해결 및 Linux stale/reconnect/session/ACK/atomic protocol은 후속 범위입니다.
+
+별도 Hardware 단계에서 다음을 확인합니다:
+
+1. Production Firmware 선택, MCU 전원 유지 및 안전한 시험 출력 구성.
+2. Pump/Heater/RUN ON 후 Linux↔STM32 분리/송신 중단 시 실제 GPIO OFF.
+3. 마지막 complete refresh부터 차단까지 실측 시간 및 최장 Poll 지연.
+4. 정상 부하/USB scheduling jitter에서 1000/250 ms의 여유와 ORE/오동작 여부.
+5. LED만 반복·부분/늦은 ON·unsafe complete 재수신 중 차단 유지.
+6. safe complete에서 출력 OFF로 동기화, 이후 별도 complete에서만 ON.
+7. ERROR/Buzzer 유지, Valve coil OFF, 기존 Door/E-Stop/ADC/UART 회귀.
+
+DHT11 Driver의 기존 HW VERIFIED 기록은 유지하며 이번 통신 fail-safe에는 새 Hardware 판정을 부여하지 않습니다.
