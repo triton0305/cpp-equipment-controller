@@ -24,7 +24,8 @@ Linux / WSL에서 State Machine, Sequence, Alarm과 출력 상태를 관리합�
 
 | 날짜 | 개발 내용 |
 |---|---|
-| [2026.10.08](https://github.com/triton0305/cpp-equipment-controller/commit/c5d6953605a620da03defa46681c7e653f1c9e39) | C++ Controller · State / Sequence · 6종 Fault · Logging · ASCII Protocol / Serial Transport · STM32 GPIO / ADC / UART Runtime 구현 · CTest 34개 및 실제 보드 E2E 검증 |
+| [2026.10.08](https://github.com/triton0305/equipment-controller/commit/c5d6953605a620da03defa46681c7e653f1c9e39) | C++ Controller · State / Sequence · 6종 Fault · Logging · ASCII Protocol / Serial Transport · STM32 GPIO / ADC / UART Runtime 구현 · CTest 34개 및 실제 보드 E2E 검증 |
+| [2026.10.12](https://github.com/triton0305/equipment-controller/commit/56088d3) | DHT11 Driver · STM32 Command-loss Fail-safe · Linux UART Recovery · Hardware Verification · CTest 41/41 PASS |
 
 ## Validation
 
