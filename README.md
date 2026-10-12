@@ -39,7 +39,7 @@ Linux / WSL에서 State Machine, Sequence, Alarm과 출력 상태를 관리합�
 
 READY qualification, 30초 RUN, 단계별 Pump / Heater Sequence, Door re-arm, Critical Sensor Safety, RESET 정책과 UART Recovery는 실제 장비 동작과 실행 로그를 기준으로 설계·수정했습니다.
 
-- [Design Process & AI Collaboration](docs/DESIGN_PROCESS.md) — 설계 의사결정, 사용자 · ChatGPT · Codex 역할 분담 및 검증 과정
+[▶ Design Process & AI Collaboration](docs/DESIGN_PROCESS.md) — 설계 의사결정, 사용자 · ChatGPT · Codex 역할 분담 및 검증 과정
 
 ## Troubleshooting
 
