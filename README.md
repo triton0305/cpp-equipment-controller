@@ -13,8 +13,6 @@
 <p align="center">
   <a href="#development-process">Development Process</a> ·
   <a href="#troubleshooting">Troubleshooting</a> ·
-  <a href="#validation">Validation</a> ·
-  <a href="#demo">Demo</a> ·
   <a href="#architecture">Architecture</a> ·
   <a href="#state--sequence">State / Sequence</a> ·
   <a href="#build">Build</a>
