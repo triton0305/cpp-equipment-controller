@@ -14,7 +14,7 @@
   <a href="#validation">Validation</a> · <a href="#demo">Demo</a> · <a href="#architecture">Architecture</a> · <a href="#state--sequence">State / Sequence</a> · <a href="#interlock--fault">Interlock / Fault</a> · <a href="#build">Build</a>
 </p>
 
-# C++ Equipment Controller
+# Equipment Controller
 
 **STM32의 스위치·ADC 입력을 UART로 받아 공정 상태와 인터록을 판단하고, 장비 출력을 제어하는 C++17 Controller입니다.**
 
