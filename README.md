@@ -47,8 +47,6 @@ STM32 Command-loss Fail-safe, Linux UART Disconnect / Reconnect, DHT11 Decoder, 
 
 [▶ Troubleshooting](docs/TROUBLESHOOTING.md) — 주요 문제의 증상, 원인 분석, 조치 및 검증 결과
 
-[▶ Troubleshooting Archive](docs/TROUBLESHOOTING_ARCHIVE.md) — 개발 과정에서 수집한 전체 트러블슈팅 기록
-
 ## Validation
 
 NUCLEO-F411RE와 WSL을 연결해 **실제 센서 입력 → STM32 → UART → C++ Controller → UART → GPIO 출력** 경로를 검증했습니다. 최신 Software Verification은 **CTest 45/45 PASS**이며, 실제 보드에서는 DHT11 Production 경로와 READY / RUN / Cycle Re-arm, E-Stop·Door Interlock, Pressure Critical, B1 RESET 동작을 확인했습니다.
