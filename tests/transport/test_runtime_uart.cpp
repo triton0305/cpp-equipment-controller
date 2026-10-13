@@ -104,7 +104,7 @@ int main(int argc, char* argv[])
     "RUN_LED:OFF\n"
     "ERROR_LED:OFF\n"
     "STATE:IDLE\n";
-  const std::size_t expected_size = expected.size() * 4;
+  const std::size_t expected_size = expected.size();
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
 
   while (std::chrono::steady_clock::now() < deadline)
@@ -122,20 +122,7 @@ int main(int argc, char* argv[])
       break;
   }
 
-  bool passed = true;
-  std::size_t pos = 0;
-
-  for (int i = 0; i < 4; ++i)
-  {
-    if (received.compare(pos, expected.size(), expected) != 0)
-    {
-      passed = false;
-      break;
-    }
-    pos += expected.size();
-  }
-
-  passed = passed && received.size() == pos;
+  const bool passed = received == expected;
 
   kill(pid, SIGKILL);
   waitpid(pid, nullptr, 0);

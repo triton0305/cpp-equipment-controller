@@ -6,6 +6,7 @@
 #include <vector>
 #include <iomanip>
 #include <sstream>
+#include <tuple>
 
 namespace {
 std::string measurement(double value)
@@ -309,14 +310,29 @@ void ControllerRuntime::service()
   }
 
   if (checkSensorTimeout()) return;
+  // Track only this service's transmissions: each new sensor batch still
+  // refreshes MCU command liveness even when its outputs are unchanged.
+  const auto output_state = [&] {
+    const auto& d = controller_.getDeviceState();
+    return std::make_tuple(controller_.getState(), ready_indicator_on_,
+        sensor_.communication_ok, d.pump_on, d.heater_on, d.valve_open,
+        d.buzzer_on, d.run_led, d.error_led);
+  };
+  auto sent_output = output_state();
+  bool output_sent = false;
+  const auto remember_output = [&] {
+    sent_output = output_state();
+    output_sent = true;
+  };
   // Expiry at poll entry must reset qualification before fresh RX can restore it.
-  if (updateReady(now_()) && !sendOutputs(false)) return;
+  bool output_refresh_needed = updateReady(now_());
 
   if (serial_.isOpen() &&
       buzzer_timer_active_ &&
       now_() - buzzer_started_ >= BuzzerDuration)
   {
     if (!sendOutputs(false)) return;
+    remember_output();
   }
   std::vector<SerialReadEvent> events;
   if (!serial_.readEvents(events))
@@ -371,7 +387,7 @@ void ControllerRuntime::service()
     if (command.type != CommandType::Invalid)
     {
       command_seen = true;
-      handleCommand(command);
+      if (handleCommand(command)) remember_output();
       if (!serial_.isOpen()) return;
       continue; // Commands never refresh the sensor deadline.
     }
@@ -381,7 +397,7 @@ void ControllerRuntime::service()
     if (!AsciiProtocol::parseSensorLine(line, sensor_))
     {
       controller_.setSensorState(sensor_); // Malformed measurement invalidates its flag.
-      if (updateReady(now_()) && !sendOutputs(false)) return;
+      if (updateReady(now_())) output_refresh_needed = true;
       diagnose("invalid_sensor", line);
       std::cerr << "Invalid SENSOR line: " << line << '\n';
       continue;
@@ -392,7 +408,7 @@ void ControllerRuntime::service()
         (pressure_line && !sensor_.pressure_valid))
     {
       controller_.setSensorState(sensor_);
-      if (updateReady(now_()) && !sendOutputs(false)) return;
+      if (updateReady(now_())) output_refresh_needed = true;
       std::cerr << "EVENT invalid measurement: " << line << '\n';
       continue; // Failed measurements cannot refresh the communication deadline.
     }
@@ -443,6 +459,7 @@ void ControllerRuntime::service()
     diagnose("last_sensor_updated", line);
     sensor_.communication_ok = true;
     controller_.setSensorState(sensor_);
+    const auto previous_state = controller_.getState();
     if (temperature_line) controller_.observeMeasurement(SensorKind::Temperature);
     if (humidity_line) controller_.observeMeasurement(SensorKind::Humidity);
     if (pressure_line) controller_.observeMeasurement(SensorKind::Pressure);
@@ -450,7 +467,15 @@ void ControllerRuntime::service()
 
     updateReady(received_at);
 
-    if (!sendOutputs(false)) return; // Never replay the rest of a failed RX batch.
+    output_refresh_needed = true;
+    if (previous_state != EquipmentState::Error &&
+        controller_.getState() == EquipmentState::Error)
+    {
+      // Interlocks and critical measurements must reach the MCU before the
+      // next RX event, regardless of any normal refresh waiting in this batch.
+      if (!sendOutputs(false)) return;
+      remember_output();
+    }
 
   }
 
@@ -462,9 +487,15 @@ void ControllerRuntime::service()
   {
     const auto step = controller_.getSequenceStep();
     updateController(!command_seen);
-    if (step != controller_.getSequenceStep() && !sendOutputs(false)) return;
+    if (step != controller_.getSequenceStep()) output_refresh_needed = true;
   }
-  if (updateReady(now_()) && !sendOutputs(false)) return;
+  if (updateReady(now_())) output_refresh_needed = true;
+  if (output_refresh_needed && (!output_sent || sent_output != output_state()))
+  {
+    if (!sendOutputs(false)) return;
+    // A single blocked refresh can still exceed the unchanged RX deadline.
+    if (checkSensorTimeout()) return;
+  }
 
   if (!sensor_.communication_ok && now_() >= next_safe_refresh_)
   {

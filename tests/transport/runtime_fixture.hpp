@@ -22,12 +22,14 @@
   } while (0)
 
 static bool fail_write;
+static std::function<void(std::string_view)> observe_write;
 static ControllerRuntime::Clock::time_point* delayed_write_clock;
 
 extern "C" ssize_t __real_write(int, const void*, size_t);
 
 extern "C" ssize_t __wrap_write(int fd, const void* data, size_t size)
 {
+  if (observe_write) observe_write(std::string_view(static_cast<const char*>(data), size));
   if (fail_write)
   {
     fail_write = false;

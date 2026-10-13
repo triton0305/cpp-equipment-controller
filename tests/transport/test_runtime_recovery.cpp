@@ -133,7 +133,7 @@ int main()
 
       CHECK(
         f.endpoint->drain() ==
-        error_packet() + error_packet()
+        error_packet()
       );
 
       f.core.handleCommand(Command{CommandType::Start});
@@ -227,7 +227,6 @@ int main()
 
       CHECK(
         f.endpoint->drain() ==
-        error_packet() +
         error_packet()
       );
     }
@@ -425,7 +424,7 @@ int main()
       f.runtime->poll();
 
       fault(f.core);
-      // Remaining old batch was not consumed.
+      // Failed batch is not replayed after reconnect.
     }
 
     // A delayed successful write must not rejuvenate
@@ -435,14 +434,12 @@ int main()
 
       f.startRunning();
 
-      const auto active =
-        AsciiProtocol::serializeDeviceState(
-          f.core.getDeviceState()
-        ) +
-        "STATE:RUN\n";
+      const auto stopped =
+        AsciiProtocol::serializeDeviceState(DeviceState{}) + "STATE:IDLE\n";
 
       f.endpoint->send(
         "PRESSURE:2048\n"
+        "STOP\n" // Commands still write immediately, before the old next line.
         "DOOR:OPEN\n"
       );
 
@@ -460,10 +457,10 @@ int main()
         f.core.getSensorState().door_closed
       );
 
-      // Old second line was discarded.
+      // The old DOOR line after the delayed command was discarded.
       CHECK(
         f.endpoint->drain() ==
-        active + safe_packet(true)
+        stopped + safe_packet(true)
       );
     }
 
