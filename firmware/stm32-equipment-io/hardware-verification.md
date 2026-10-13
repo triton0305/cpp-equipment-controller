@@ -1,4 +1,33 @@
-# Hardware Verification Report — 2026-10-08
+# Hardware Verification
+
+최신 검증 기준일: 2026-10-13 · GitHub `main`: `c5cbb81`.
+
+이 문서는 실제 NUCLEO-F411RE의 입력·GPIO·센서·UART 및 공정 시험 근거를 보존합니다. 전체 Host / Hardware matrix와 독립 CLI 결과는 [Verification Report](../../docs/verification.md)에 통합합니다.
+
+## 최신 확인 범위
+
+| 범위 | 실물 확인 |
+|---|---|
+| Board / I/O | Flash · Boot · Door / E-Stop · ADC · GPIO · USART2 |
+| DHT11 | 독립 frame decode · Production UART · Linux 실제값 |
+| 30초 공정 | Pump / Heater 단계와 정상 완료 · Runtime / CLI 상태 |
+| READY | Door 조건 · Pressure 범위 이탈·복귀 · 새 5초 qualification |
+| Temperature READY | 정상 범위 약 22°C에서 진행 관찰 |
+| Safety | 기존 Door / E-Stop E2E · Pressure Critical · B1 RESET |
+| Communication loss | STM32 local 출력 OFF · Error 유지 / 복구 흐름 |
+| Operator CLI | 연결 · HELP / STATUS · START 거부 / 수락 · RESET · STOP 로컬 거부 |
+
+정확한 공정 전환의 시간 오차, Local RED 점등 시점, Temperature 시작 범위 밖의 시험과 장시간 UART 안정성은 추가 계측 범위입니다. 약 1초 telemetry 공백은 실물에서 재현됐으며 발생 계층은 미확정입니다.
+
+Pump / Heater는 LED 출력으로 확인했습니다. CLI snapshot은 Controller가 보유한 값과 출력 결정입니다. 실제 관찰, Host fake 및 정량 timing을 각각 구분합니다.
+
+## 날짜별 실물 근거
+
+아래 기록은 각 당시 firmware / executable / 시험 조건과 결과를 유지합니다. 이후 진행한 30초 공정과 CLI 결과는 위 최신 요약과 전체 검증 보고서에 추가합니다.
+
+<details>
+<summary>2026-10-08~12 실물 로그·GPIO·Flash·DHT11 시험 기록</summary>
+
 
 ## 1. 검증 기준
 
@@ -764,7 +793,7 @@ Production DHT11 온도/습도 경로 미연결 제한도 유지한다.
 Stepper/OLED 상태는 변경하지 않았다.
 
 전체 체크리스트 및 남은 항목:
-[Controller runtime 정책 검증](../../docs/CONTROLLER_RUNTIME_POLICY.md).
+[Controller runtime 정책 검증](../../docs/controller-runtime.md).
 
 ## 17. DHT11 운영 경로 연결 — Host 검증, HW 대기
 
@@ -778,7 +807,7 @@ SensorState → 1초 snapshot 경로를 연결했다. 앞선 절의 운영 경�
 - 기존 DHT11 독립 harness와 사용자 제공 IDLE/READY/RUN 실물 기록은 유지한다.
   이 기록을 이번 운영 경로의 HW VERIFIED로 확대하지 않는다.
 
-[구현 경로, freshness/실패 정책, 테스트 및 실물 확인 항목](../../docs/DHT11_PRODUCTION_PATH.md).
+[구현 경로, freshness/실패 정책, 테스트 및 실물 확인 항목](../../docs/dht11-integration.md).
 
 ## 18. DHT11 운영 경로 사용자 관찰 및 후속 Cycle Safety — 2026-10-12 기록
 
@@ -793,6 +822,9 @@ SensorState → 1초 snapshot 경로를 연결했다. 앞선 절의 운영 경�
 이 두 항목을 DHT 오류/만료/복구, UART timing, 새 critical/sequence/re-arm 정책의 HW 검증으로
 확대하지 않는다. 앞선 DHT 운영 경로 HW 대기 기록은 당시 상태이며, 이 표가 제공된 관찰만 갱신한다.
 
-이후 구현한 [Cycle Safety 정책](../../docs/CYCLE_SAFETY_POLICY.md)은 Host **45/45 PASS**,
+이후 구현한 [Cycle Safety 정책](../../docs/process-control.md)은 Host **45/45 PASS**,
 STM32 Debug 및 기존 HW target build 확인 완료이고 **새 정책의 실물 검증은 대기**이다.
 기존 IDLE/READY/RUN 및 command-loss의 역사적 검증 기록은 유지한다.
+
+
+</details>

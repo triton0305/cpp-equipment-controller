@@ -1,9 +1,81 @@
-# STM32 Runtime 검증 기록
+# STM32 Runtime
+
+기준: 2026-10-13 · `c5cbb81`. NUCLEO-F411RE에서 센서 입력을 수집하고 Linux 명령을 GPIO 출력에 적용합니다. 실제 보드 결과는 [Hardware Verification](hardware-verification.md), 전체 최신 검증은 [Verification Report](../../docs/verification.md)에 기록합니다.
+
+## 현재 구성
+
+| 모듈 | 책임 |
+|---|---|
+| `device_io.c` | Door / E-Stop / Reset 입력 · Pump / Heater / RGB / Buzzer 출력 |
+| `pressure_adc.c` | 12-bit ADC raw 값 · cooperative 변환 · 10 ms timeout |
+| `dht11.c`, `dht11_frame.c` | 실제 DHT11 frame 수집·검증·decode |
+| `io_environment.c` | 온습도 새 결과·validity·freshness |
+| `uart_io.c` | USART2 SR / DR polling · capture 중 RX queue |
+| `io_protocol.c` | LF / CRLF framing · 명령 파싱 · 센서 직렬화 |
+| `io_runtime.c` | RX / TX 예산 · 보고 주기 · command freshness · fail-safe |
+
+CubeMX 초기화 뒤 USER CODE 영역에서 Runtime을 연결합니다. Runtime poll은 RX / TX를 각각 최대 32 byte 처리하며, 이전 packet 전송 완료 후 100 ms 간격으로 sensor report를 예약합니다. DHT11 온습도는 새 측정 결과가 있을 때 추가합니다.
+
+## 핀과 입력
+
+| 기능 | Pin / 의미 |
+|---|---|
+| Pressure | PA0 / ADC1_IN0 · raw 0~4095 |
+| USART2 | PA2 TX / PA3 RX · ST-LINK VCP · 115200 8N1 |
+| Door | PB0 · LOW=CLOSED |
+| E-Stop | PB1 · LOW=ON |
+| B1 USER RESET | PC13 · foreground debounce |
+| Pump / Heater LED | PB7 / PA6 · HIGH=ON |
+| Buzzer | PA7 |
+| RGB Red / Green / Blue | PB4 / PB5 / PB6 |
+| DHT11 | PC4 · TIM5 1 MHz tick |
+
+Pressure는 실제 압력 단위가 아닌 ADC raw count입니다. Pump / Heater 출력은 LED로 관찰합니다. 핀·Clock·Peripheral 설정은 생성 프로젝트에 보관합니다.
+
+## ASCII 계약
+
+입력 보고는 DOOR, ESTOP, PRESSURE와 새 TEMP / HUMIDITY입니다. Invalid 측정은 해당 INVALID line으로 전달합니다.
+
+제어 complete refresh는 `PUMP → HEATER → VALVE → BUZZER → RUN_LED → ERROR_LED` 순서이며 250 ms 이내에 완성돼야 command freshness를 갱신합니다. STATE는 뒤의 별도 상태 표시 명령입니다.
+
+## Local Command-loss Fail-safe
+
+마지막 complete refresh부터 1000 ms가 경과하면 STM32가 Pump / Heater / RUN 출력을 차단하고 latch를 적용합니다. Timeout 검사는 queued RX 명령 처리보다 먼저 수행합니다.
+
+Latch 상태에서는 위험 ON을 차단합니다. Safe complete refresh로 동기화한 뒤 별도의 정상 refresh에서 ON을 허용합니다. GPIO와 출력 cache를 함께 안전 상태로 정리합니다.
+
+유효한 control session의 command loss는 `communication_loss_red`로 local RED를 보존합니다. Cold boot의 무수신과 구분하고 local timeout 자체로 buzzer를 새로 켜지 않습니다. 초기 SAFE traffic과 단독 상태 명령은 RED를 지우지 못합니다. Complete refresh와 후속 Linux 운영 상태로 표시 책임을 인계합니다.
+
+Physical 출력 차단은 HW VERIFIED이며, 최신 Local RED 인계는 Host Fake-HAL 검증과 정확한 점등 시점 HW 검증을 구분합니다.
+
+## DHT11과 RESET
+
+DHT11은 2.1초 간격으로 측정하며 새 정상값을 UART로 전달합니다. 실패 / stale은 INVALID로 처리합니다. Capture 중 UART queue와 timeout 검사를 유지합니다. 자세한 정책은 [DHT11 Integration](../../docs/dht11-integration.md)에 기록합니다.
+
+B1 입력은 30 ms debounce와 press당 한 번의 RESET 요청으로 처리합니다. Linux는 최신 sensor 정보와 기존 RESET guard를 다시 검사합니다.
+
+## Build
+
+```bash
+cd firmware/stm32-equipment-io
+cmake --preset Debug -DDHT11_HARDWARE_TEST=OFF -DSTEPPER_HARDWARE_TEST=OFF
+cmake --build --preset Debug
+```
+
+Production ELF는 `build/Debug/stm32-equipment-io.elf`에 생성됩니다. 독립 Harness 시험 후에는 Production 산출물을 명시적으로 Flash해 실행 기준선을 복구합니다.
+
+## 초기 구현과 검증 이력
+
+아래는 해당 개발 시점의 기준선·메모리 사용량·시험 결과입니다. 현재 운영 정책은 위 본문과 [Process Control](../../docs/process-control.md)을 기준으로 읽습니다.
+
+<details>
+<summary>2026-10-08~12 STM32 구현·검증 기록</summary>
+
 
 **Baseline:** `babd7c5`  
 **Board:** NUCLEO-F411RE / STM32F411RET6
 
-실물 보드 검증 결과는 [HARDWARE_VERIFICATION.md](HARDWARE_VERIFICATION.md)에 정리했습니다.  
+실물 보드 검증 결과는 [hardware-verification.md](hardware-verification.md)에 정리했습니다.  
 RUN 상태 E-Stop E2E를 포함한 실제 입력·출력 검증 결과를 확인할 수 있습니다.
 
 **최신 추가:** Stepper Phase A Host 검증 및 Phase B 독립 시험 Firmware 준비 완료 / Stepper Hardware 미검증. [13절](#13-stepper-phase-a--b-준비--2026-10-12)에 기록합니다.
@@ -339,7 +411,7 @@ STM32 GPIO
 LED / Buzzer
 ```
 
-세부 시험 결과와 GPIO Snapshot, Flash Readback, 실제 입력·출력 기록은 [HARDWARE_VERIFICATION.md](HARDWARE_VERIFICATION.md)에 정리했습니다.
+세부 시험 결과와 GPIO Snapshot, Flash Readback, 실제 입력·출력 기록은 [hardware-verification.md](hardware-verification.md)에 정리했습니다.
 
 ---
 
@@ -526,7 +598,7 @@ Driver가 Sensor의 이전 측정 결과를 읽는 특성도 반복 측정 시 �
 통합 방안과 측정된 Latency를 확인한 뒤에만 운영 Runtime에 연결합니다.
 Buzzer 제어/의도적 Door 또는 E-Stop Fault/Audible Test를 수행하지 않았습니다.
 기존 Door/E-Stop/E-Stop→Buzzer/Core MVP Physical E2E의 HW VERIFIED 기록을 유지했고
-`HARDWARE_VERIFICATION.md`는 수정하지 않았습니다.
+`hardware-verification.md`는 수정하지 않았습니다.
 
 **[READY TO COMMIT — HOST VERIFIED]**
 
@@ -537,7 +609,7 @@ Buzzer 제어/의도적 Door 또는 E-Stop Fault/Audible Test를 수행하지 �
 사용자가 격리형 Harness에서 연속 정상 Sample **16/16**, INVALID_DATA **0**, Checksum 전부 VALID를 확인했습니다.
 온도 25.8 °C, 습도 44.3–44.5 %RH, 측정 간격 2100 ms, START_MS→DONE_MS 약 23 ms이며 비정상 정지는 없었습니다.
 **DHT11 Driver: HW VERIFIED / Production Runtime Integration: NOT YET VERIFIED**
-실제 결과와 Validation 수정 원인은 [HARDWARE_VERIFICATION.md](HARDWARE_VERIFICATION.md#13-dht11-driver-hardware-verification--2026-10-12)에 기록했습니다.
+실제 결과와 Validation 수정 원인은 [hardware-verification.md](hardware-verification.md#13-dht11-driver-hardware-verification--2026-10-12)에 기록했습니다.
 
 ### 격리 구조
 
@@ -696,7 +768,7 @@ Pump / Heater / RUN Green의 실제 관찰 순서는 **OFF → ON → OFF → OF
 - **Physical fail-safe behavior: HW VERIFIED**
 - **Exact timeout latency: NOT INSTRUMENT-MEASURED**
 
-시험 조건, 단계별 결과 및 검증 범위는 [Hardware Verification 14절](HARDWARE_VERIFICATION.md#14-communication-safety-phase-1-hardware-verification--2026-10-12)에 기록했습니다.
+시험 조건, 단계별 결과 및 검증 범위는 [Hardware Verification 14절](hardware-verification.md#14-communication-safety-phase-1-hardware-verification--2026-10-12)에 기록했습니다.
 
 시작 기준: `main`, HEAD/origin/main `e7acaee`, Working Tree clean, 기존 CTest 37개.
 Linux의 State Machine/Sequence/Fault/Interlock 판단은 그대로 두고 STM32에 통신 유효성 및 물리 출력 차단만 추가했습니다.
@@ -968,4 +1040,7 @@ CMake compile source 목록으로 각 빌드에 올바른 Runtime 구현 하나�
 비교 자료는 `firmware/stm32-equipment-io/build/stepper-verification/production-before.bin`, `production-after.bin`입니다.
 기존 command-loss **HW VERIFIED** 및 exact latency **NOT INSTRUMENT-MEASURED** 판정은 유지합니다.
 신규 Stepper에는 이 Hardware 판정을 확장하지 않습니다.
-실제 시험 준비·관찰표는 [Hardware Verification 15절](HARDWARE_VERIFICATION.md#15-stepper-phase-b-hardware-verification-준비--2026-10-12)에 기록했습니다.
+실제 시험 준비·관찰표는 [Hardware Verification 15절](hardware-verification.md#15-stepper-phase-b-hardware-verification-준비--2026-10-12)에 기록했습니다.
+
+
+</details>

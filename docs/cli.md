@@ -1,4 +1,4 @@
-# Independent Controller CLI
+# Operator CLI
 
 `./run`은 Controller Runtime과 STM32 UART를 소유하고 Safety / Sequence 판단,
 센서 polling, 상태 로그 출력을 수행합니다. 별도 터미널의 `./ctl`은 로컬 Unix
@@ -87,7 +87,7 @@ State=Idle Ready=1 Armed=1 Rearm=0 Alarm=0 SequenceStep=0 Operational=1 Communic
 `State`는 Idle / Ready / Run / Error이며 `Ready`는 별도의 READY qualification
 indicator입니다. `Armed`는 재시작 허용 상태입니다. `Rearm`은 0=Armed,
 1=WaitOpen, 2=WaitClose이고, `SequenceStep`과 `Alarm`은 기존 enum 숫자입니다.
-`Operational`은 UART 동기화 단계 완료 여부, `CommunicationOK`는 보유 통신 상태입니다.
+`Operational`은 Runtime이 보유한 동기화 phase, `CommunicationOK`는 보유 통신 유효성입니다. 현재 통신 상태는 두 필드를 함께 확인합니다.
 Pressure는 ADC raw count, Temperature는 °C, Humidity는 %입니다.
 유효하지 않거나 기존 polling에서 만료된 측정은 `unavailable`, 아직 받지 못한
 Door / EStop은 `unknown`으로 표시합니다. Pump / Heater는 Controller의 출력 명령
@@ -123,7 +123,7 @@ IPC 초기화 실패 시 Runtime은 UART를 열기 전에 오류 종료합니다
 지나치게 긴 IPC 요청은 연결을 닫으며, 느린 client 때문에 UART loop를 기다리지
 않습니다. 별도 receiver thread가 Controller 상태를 변경하지 않습니다.
 
-## 검증 범위 및 사용자 HW 확인
+## 검증 범위
 
 **HOST VERIFIED**: 명령 parsing / 전달 / 거부, CLI `stop`의 로컬 거부 및 IPC 미전달,
 CLI `stop` 입력 후 Run 상태 유지, snapshot의 UART 무접근,
@@ -131,15 +131,8 @@ stdin과 IPC의 공통 처리, disconnect, Runtime 종료, stale socket,
 활성 endpoint 보호, 부분 수신 및 느린 client, 기존 Runtime / UART 회귀 테스트.
 Host integration은 Unix socket과 PTY로 STM32 입력을 모사합니다.
 
-**HW NOT VERIFIED**: 실제 STM32 UART, 실제 센서 및 Pump / Heater 출력,
-물리적 Safety 응답과 실제 장치에서의 CLI 병행 운전.
+**HW VERIFIED — 사용자 실물 확인**: 실제 NUCLEO-F411RE와 Runtime을 연결한 환경에서 CLI 연결, HELP, STATUS, READY 미충족 START 거부, 정상 START, 30초 공정 진행, RESET과 STOP 로컬 거부를 확인했습니다.
 
-사용자는 Terminal 1에서 `./run`, Terminal 2에서 `./ctl`을 실행하고:
+실물 STATUS는 Runtime이 보유한 센서와 출력 상태를 조회한 결과입니다. 전체 IPC 예외 처리, CLI 종료 후 lifecycle 및 느린 client 시험은 위 Host 결과로 구분합니다.
 
-1. `status` 값과 Runtime 로그, 실제 센서 상태가 일치하는지 확인합니다.
-2. 안전 조건을 만족하고 READY qualification 완료 후 `start`를 확인합니다.
-3. Fault 원인을 해소한 뒤 `reset`과 상태 복귀를 확인합니다.
-4. `help`, `exit`을 실행하고 Runtime이 계속 동작하는지 확인합니다.
-5. CLI 재접속 후 Runtime을 종료하여 CLI 연결 종료 감지를 확인합니다.
-
-이번 변경은 보류된 간헐적 UART CommunicationFault / Alarm=6 문제를 수정하지 않습니다.
+최신 전체 자동 테스트는 **CTest 53/53 PASS**입니다. 상세 결과와 확인 범위는 [Verification Report](verification.md)를 참조합니다. 공정과 명령 조건은 [Process Control](process-control.md), 실제 장애 조사는 [Troubleshooting](troubleshooting.md)에 연결합니다.

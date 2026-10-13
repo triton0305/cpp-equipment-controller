@@ -1,7 +1,7 @@
-# UART startup/reconnect timing diagnostics (개발 15)
+# UART Diagnostics
 
 이 계측은 원인 식별용이다. SensorTimeout=1000ms, sync pair, Error latch,
-READY/START, 공정 및 안전출력 정책은 변경하지 않는다. HW 결과는 아직 없다.
+READY/START, 공정 및 안전출력 정책은 변경하지 않는다. 후속 실물 분석 결과는 아래 관찰 기록과 [Troubleshooting](troubleshooting.md)에 정리한다.
 
 ## 실행
 
@@ -110,11 +110,23 @@ Linux 측 read 기록만으로 MCU가 실제 송신을 멈췄는지, USB/VCP 중
 실제 HW에서 계측 ON/OFF의 발생률도 비교해야 한다. 기존 10ms main loop sleep 이외에
 새 sleep이나 deadline 완화는 추가하지 않았다.
 
-## 검증 상태
+## 계측 구현 당시 Host 검증
 
 Host build 및 Full CTest 46/46 PASS(기존 45개 + LINUX_UART_DIAGNOSTICS_HOST 1개).
 새 테스트는 deadline/age, successful slow write, reconnect session, 조기 return의
 begin/end 짝, bounded buffer wrap 및 export 실패를 검증한다. 실제 Linux executable을
 PTY에 연결한 정상/수신공백→자동 reconnect 시험에서도 Ctrl+C 뒤 CSV 저장을 확인했다.
 이 Host 빌드의 record 크기는 192 bytes이므로 기본 storage는 48MiB다.
-새로운 NUCLEO-F411RE HW 측정은 수행하지 않았다.
+위 46/46은 recorder 구현 당시의 Host 결과다. 현재 전체 기준선은 53/53 PASS이며 후속 HW 관찰은 아래에 구분한다.
+
+## 후속 Hardware 관찰 — 2026-10-13
+
+사용자 제공 계측 분석에서 Fault 직전 약 1200 ms 동안 readEvents 약 112~118회, median 간격 약 10.1 ms, maximum 약 10.3~10.6 ms, Fault 시 sensor age 약 1000~1003 ms를 확인했습니다. 관측한 해당 구간에서는 Linux Runtime 전체가 약 1초간 멈춘 현상이 나타나지 않았습니다.
+
+일부 실행에는 partial / malformed telemetry가 있었고, 별도 실행에는 Linux RX에서 약 1초 동안 byte가 관찰되지 않았습니다. USB/IP의 `urb->status -104`, `vhci unlink`는 정상 실행에서도 관찰돼 직접 원인으로 확정하지 않았습니다.
+
+별도 write 계측에서는 평소 약 0.1 ms의 write가 약 110 ms로 늘어나는 구간과 같은 service에서 5~6회 반복되는 output refresh를 관찰했습니다. `96cac56`은 일반 Sensor-driven 갱신을 batch 단위로 모으도록 수정했습니다. `batch_received` event도 RX timestamp를 해석할 때 함께 확인합니다.
+
+Linux 관측만으로 STM32 TX / ST-LINK VCP / USB-IP 중 발생 계층을 특정할 수 없습니다. 후속 분석은 STM32 TX pin과 Linux RX를 같은 시간대에 계측하는 방식으로 관리합니다.
+
+검증 수준과 후속 항목: [Verification Report](verification.md).
