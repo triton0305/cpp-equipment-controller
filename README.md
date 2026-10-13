@@ -41,11 +41,11 @@ READY qualification, 30초 RUN, 단계별 Pump / Heater Sequence, Door re-arm, C
 
 ## Troubleshooting
 
-Equipment Controller를 개발하면서 UART 통신, DHT11 센서 처리, Sequence 진행, Safety 제어와 실제 하드웨어 검증 과정에서 발생한 문제와 해결 과정을 정리했습니다.
+UART 통신, DHT11 센서 처리, 공정 진행과 안전 제어에서 발생한 문제를 증상 → 원인 추적 → 조치 → 검증 결과 순서로 정리했습니다.
 
-STM32 Command-loss Fail-safe, Linux UART Disconnect / Reconnect, DHT11 Decoder, Production Firmware 불일치, Sequence Transition, E-Stop / Door E2E, OLED와 Stepper Hardware Investigation을 중심으로 주요 사례를 정리했습니다.
+STM32 Command-loss Fail-safe, DHT11 Decoder, UART Disconnect / Reconnect, 실행 파일·Production Firmware 불일치, 공정 진행 오류와 통신 단절 시 RED 표시 보존 사례를 다룹니다. 각 사례에는 관련 코드·테스트와 Host / Hardware 검증 범위를 함께 기록했습니다.
 
-[▶ Troubleshooting](docs/TROUBLESHOOTING.md) — 주요 문제의 증상, 원인 분석, 조치 및 검증 결과
+[▶ Troubleshooting](docs/TROUBLESHOOTING.md) — 주요 장애의 원인 추적, 수정 및 검증 기록
 
 ## Validation
 
