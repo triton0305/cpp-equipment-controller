@@ -13,6 +13,8 @@ static uint32_t tx_started;
 static size_t tx_length, tx_position;
 static uint32_t last_sample;
 static bool run_led, error_led;
+/* Separate local timeout ownership from the Linux error cache and cold boot. */
+static bool communication_loss_red, state_refresh_ready;
 static bool reset_level, reset_stable, reset_pending;
 static uint32_t reset_changed;
 
@@ -40,6 +42,18 @@ uint32_t io_runtime_unsupported_valve_commands;
 
 static void apply_state(IoState state)
 {
+  /* SAFE synchronization and isolated state traffic cannot release local RED.
+     Handoff requires a complete refresh followed by a Linux operating state. */
+  if (communication_loss_red)
+  {
+    if (!io_runtime_control_valid || io_runtime_failsafe_latched ||
+        !state_refresh_ready || state == IO_STATE_SAFE)
+    {
+      DeviceIo_SetIndicators(false, true);
+      return;
+    }
+    communication_loss_red = false;
+  }
   /* Never display a normal operating state without valid control. */
   if (!io_runtime_control_valid || io_runtime_failsafe_latched)
   {
@@ -59,7 +73,7 @@ static void apply_state(IoState state)
       DeviceIo_SetStateLed(DEVICE_STATE_RUN);
       break;
     case IO_STATE_ERROR:
-      DeviceIo_SetStateLed(DEVICE_STATE_ERROR);
+      DeviceIo_SetIndicators(false, true); // Keep RED high during ownership handoff.
       break;
     case IO_STATE_SAFE:
     default:
@@ -111,8 +125,11 @@ static void communication_safe_state(void)
 
   run_led = false;
 
-  /* Preserve the existing latched ERROR indication policy. */
-  DeviceIo_SetIndicators(false, error_led);
+  /* Called only after previously valid control reaches its existing deadline.
+     Do not change the Linux alarm cause or touch the buzzer. */
+  communication_loss_red = true;
+  state_refresh_ready = false;
+  DeviceIo_SetIndicators(false, true);
 
   io_runtime_control_valid = false;
   io_runtime_failsafe_latched = true;
@@ -129,9 +146,11 @@ static void receive_command(const IoCommand *command, uint32_t now)
   if (command->kind == IO_STATE)
   {
     apply_state(command->state);
+    state_refresh_ready = false;
     return;
   }
 
+  state_refresh_ready = false;
   static const IoCommandKind order[] = {
     IO_PUMP, IO_HEATER, IO_VALVE, IO_BUZZER, IO_RUN_LED, IO_ERROR_LED
   };
@@ -174,6 +193,7 @@ static void receive_command(const IoCommand *command, uint32_t now)
   }
   last_control_refresh = now;
   io_runtime_control_valid = true;
+  state_refresh_ready = true;
 }
 
 void IoRuntime_Init(ADC_HandleTypeDef *adc, UART_HandleTypeDef *uart)
@@ -183,6 +203,7 @@ void IoRuntime_Init(ADC_HandleTypeDef *adc, UART_HandleTypeDef *uart)
   reader = (IoLineReader){0};
   tx_length = tx_position = 0;
   run_led = error_led = false;
+  communication_loss_red = state_refresh_ready = false;
   reset_level = reset_stable = DeviceIo_ReadResetActive();
   reset_pending = false;
   reset_changed = HAL_GetTick();
@@ -224,13 +245,18 @@ void IoRuntime_Poll(void)
     if (result < 0)
     {
       ++io_runtime_rx_errors;
+      state_refresh_ready = false;
       refresh_next = 0;
       IoProtocol_Discard(&reader);
       break;
     }
     IoCommand command;
     if (IoProtocol_Feed(&reader, byte, &command)) receive_command(&command, now);
-    else if (byte == '\n' || reader.discard) refresh_next = 0;
+    else if (byte == '\n' || reader.discard)
+    {
+      refresh_next = 0;
+      state_refresh_ready = false;
+    }
   }
   if (tx_position == tx_length && (uint32_t)(now - last_sample) >= 100U)
   {

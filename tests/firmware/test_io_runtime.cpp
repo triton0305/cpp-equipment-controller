@@ -24,13 +24,18 @@ static std::deque<int> rx;
 static std::string tx;
 static unsigned tx_budget = 10000;
 static unsigned reads, writes;
+static bool require_red_high;
 HAL_StatusTypeDef HAL_ADC_Start(ADC_HandleTypeDef *) { fake_adc_eoc = !adc_fail; return adc_fail ? HAL_ERROR : HAL_OK; }
 HAL_StatusTypeDef HAL_ADC_Stop(ADC_HandleTypeDef *) { return HAL_OK; }
 uint32_t HAL_ADC_GetValue(ADC_HandleTypeDef *) { return raw_adc; }
 uint32_t HAL_GetTick(void) { return tick; }
 GPIO_PinState HAL_GPIO_ReadPin(GPIO_TypeDef *p, uint16_t pin) { return p->input & pin ? GPIO_PIN_SET : GPIO_PIN_RESET; }
 void HAL_GPIO_WritePin(GPIO_TypeDef *p, uint16_t pin, GPIO_PinState state)
-{ if (state == GPIO_PIN_SET) p->output |= pin; else p->output &= ~pin; }
+{
+  if (require_red_high && p == STATE_R_GPIO_Port && (pin & STATE_R_Pin))
+    CHECK(state == GPIO_PIN_SET); // Detect even a transient OFF write during handoff.
+  if (state == GPIO_PIN_SET) p->output |= pin; else p->output &= ~pin;
+}
 void UartIo_Init(UART_HandleTypeDef *) {}
 int UartIo_TryRead(uint8_t *b)
 {
@@ -239,6 +244,68 @@ static void test_communication_failsafe()
   init(); tick = timeout + 1; poll(); latched(); // Startup with no RX remains invalid.
 }
 
+static void test_communication_red()
+{
+  ADC_HandleTypeDef adc{}; UART_HandleTypeDef uart{};
+  DeviceState safe, run;
+  run.pump_on = run.heater_on = run.run_led = true;
+  const auto safe_packet = AsciiProtocol::serializeDeviceState(safe);
+  const auto run_packet = AsciiProtocol::serializeDeviceState(run);
+  auto init = [&]() {
+    require_red_high = false;
+    rx.clear(); tx.clear(); tick = 0; tx_budget = 10000;
+    IoRuntime_Init(&adc, &uart);
+    check_devices(safe);
+    CHECK(!output(STATE_R_GPIO_Port, STATE_R_Pin));
+    CHECK(!output(STATE_G_GPIO_Port, STATE_G_Pin));
+  };
+  auto red_safe = [&]() {
+    CHECK(!io_runtime_control_valid && io_runtime_failsafe_latched);
+    check_devices(safe); // Includes buzzer OFF: loss itself never enables it.
+    CHECK(output(STATE_R_GPIO_Port, STATE_R_Pin));
+    CHECK(!output(STATE_G_GPIO_Port, STATE_G_Pin));
+    CHECK(!output(STATE_B_GPIO_Port, STATE_B_Pin));
+  };
+  init(); tick = IO_CONTROL_TIMEOUT_MS + 1; poll();
+  CHECK(!output(STATE_R_GPIO_Port, STATE_R_Pin)); // Silent cold boot is not loss.
+  for (const auto& noise : {std::string("PUMP:"), std::string("HEATER:bad\n"),
+      std::string("UNKNOWN:OFF\n"), std::string("STATE:SAFE\n"),
+      std::string("STATE:IDLE\n"), std::string("ERROR_LED:OFF\n"),
+      std::string("PUMP:OFF\nHEATER:OFF\nVALVE:CLOSED\nBUZZER:OFF\nRUN_LED:OFF\n")})
+  {
+    init(); send(safe_packet); send(run_packet + "STATE:RUN\n");
+    tick = IO_CONTROL_TIMEOUT_MS - 1; poll();
+    check_devices(run); CHECK(io_runtime_control_valid);
+    CHECK(!output(STATE_R_GPIO_Port, STATE_R_Pin));
+    tick = IO_CONTROL_TIMEOUT_MS; poll(); red_safe();
+    require_red_high = true;
+    ++tick; poll(); red_safe();
+    send(noise); red_safe();
+  }
+  // Linux reconnect sends SAFE first, then the latched Alarm=6 ERROR snapshot.
+  init(); send(safe_packet); send(run_packet + "STATE:RUN\n");
+  tick = IO_CONTROL_TIMEOUT_MS; poll(); red_safe(); require_red_high = true;
+  send("\n" + safe_packet + "STATE:SAFE\n");
+  CHECK(io_runtime_control_valid && !io_runtime_failsafe_latched);
+  check_devices(safe); CHECK(output(STATE_R_GPIO_Port, STATE_R_Pin));
+  send("STATE:IDLE\nERROR_LED:OFF\nSTATE:SAFE\n");
+  CHECK(output(STATE_R_GPIO_Port, STATE_R_Pin));
+  DeviceState alarm; alarm.error_led = alarm.buzzer_on = true;
+  send(AsciiProtocol::serializeDeviceState(alarm) + "STATE:SAFE\n");
+  CHECK(output(STATE_R_GPIO_Port, STATE_R_Pin));
+  send(AsciiProtocol::serializeDeviceState(alarm) + "STATE:ERROR\n");
+  check_devices(alarm); CHECK(output(STATE_R_GPIO_Port, STATE_R_Pin));
+  tick += IO_CONTROL_TIMEOUT_MS; poll(); // Already in Linux Error, then loss again.
+  CHECK(output(STATE_R_GPIO_Port, STATE_R_Pin)); check_devices(alarm);
+  send(AsciiProtocol::serializeDeviceState(alarm) + "STATE:ERROR\n");
+  check_devices(alarm);
+  require_red_high = false;
+  send(safe_packet + "STATE:IDLE\n"); // Linux accepted RESET owns indications again.
+  check_devices(safe);
+  CHECK(!output(STATE_R_GPIO_Port, STATE_R_Pin));
+  CHECK(output(STATE_B_GPIO_Port, STATE_B_Pin));
+}
+
 static void test_state_protocol()
 {
   ADC_HandleTypeDef adc{}; UART_HandleTypeDef uart{};
@@ -363,7 +430,7 @@ int main(int argc, char **argv)
   if (argc == 2 && std::string(argv[1]) == "--environment")
   { test_environment(); return 0; }
   if (argc == 2 && std::string(argv[1]) == "--failsafe")
-  { test_communication_failsafe(); return 0; }
+  { test_communication_failsafe(); test_communication_red(); return 0; }
   test_state_protocol();
   test_reset_button();
   rx.clear(); tx.clear(); tick = 0; tx_budget = 10000;
