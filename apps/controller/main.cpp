@@ -5,6 +5,9 @@
 #include <poll.h>
 #include <unistd.h>
 #include <string>
+#include <cstdlib>
+#include <memory>
+#include "uart_diagnostics.hpp"
 
 #include "controller_runtime.hpp"
 
@@ -25,8 +28,14 @@ int main(int argc, char* argv[])
   std::signal(SIGTERM, stop);
   std::cout << std::unitbuf;
 
+  // Allocate and touch the bounded flight recorder before opening UART.
+  const char* diagnostic_path = std::getenv("EQUIPMENT_UART_DIAG");
+  std::unique_ptr<UartDiagnostics> diagnostics;
+  if (diagnostic_path && *diagnostic_path) diagnostics = std::make_unique<UartDiagnostics>();
+
   EquipmentController controller;
   ControllerRuntime runtime(argv[1], controller);
+  runtime.setDiagnostics(diagnostics.get());
   std::string input;
   bool stdin_open = true;
   while (!stopping)
@@ -52,5 +61,11 @@ int main(int argc, char* argv[])
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
   runtime.shutdown();
+  // No CSV formatting or disk writes while controlling equipment.
+  if (diagnostics)
+  {
+    if (diagnostics->save(diagnostic_path)) std::cerr << "UART_DIAG saved: " << diagnostic_path << '\n';
+    else std::cerr << "UART_DIAG export failed: " << diagnostic_path << '\n';
+  }
   return 0;
 }

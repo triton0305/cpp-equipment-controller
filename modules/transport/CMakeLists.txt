@@ -1,2 +1,2 @@
-add_library(equipment_transport src/serial_transport.cpp)
+add_library(equipment_transport src/serial_transport.cpp src/uart_diagnostics.cpp)
 target_include_directories(equipment_transport PUBLIC include)

@@ -1,4 +1,6 @@
 #include "serial_transport.hpp"
+#include "uart_diagnostics.hpp"
+#include <sys/ioctl.h>
 
 #include <cerrno>
 #include <fcntl.h>
@@ -87,6 +89,9 @@ bool SerialTransport::isOpen() const
 
 bool SerialTransport::writeAll(const std::string& data)
 {
+  UartDiagnostics::Span trace(diagnostics_, "write_begin", "write_end", data.size());
+  trace.result = 0;
+  trace.bytes = 0;
   if (!isOpen())
   {
     return false;
@@ -110,6 +115,7 @@ bool SerialTransport::writeAll(const std::string& data)
     if (result > 0)
     {
       written += static_cast<std::size_t>(result);
+      trace.bytes = written;
       continue;
     }
 
@@ -163,7 +169,16 @@ bool SerialTransport::writeAll(const std::string& data)
     return false;
   }
 
+  trace.result = 1;
   return true;
+}
+
+void SerialTransport::diagnosePendingInput()
+{
+  if (!diagnostics_) return;
+  int bytes = -1;
+  const int result = ioctl(fd_, FIONREAD, &bytes);
+  diagnostics_->record("timeout_rx_queue", -1, result == 0 ? bytes : -1, result == 0);
 }
 
 bool SerialTransport::readAvailable(std::string& data)
@@ -257,6 +272,8 @@ bool SerialTransport::readLines(
 
 bool SerialTransport::readEvents(std::vector<SerialReadEvent>& events)
 {
+  UartDiagnostics::Span trace(diagnostics_, "read_events_begin", "read_events_end");
+  trace.result = 0;
   events.clear();
   std::string received;
 
@@ -265,6 +282,8 @@ bool SerialTransport::readEvents(std::vector<SerialReadEvent>& events)
     return false;
   }
 
+  trace.bytes = received.size();
+  if (diagnostics_) diagnostics_->record("rx_bytes", -1, received.size(), 1, received);
   for (char ch : received)
   {
     if (discarding_line_)
@@ -302,5 +321,7 @@ bool SerialTransport::readEvents(std::vector<SerialReadEvent>& events)
     rx_buffer_ += ch;
   }
 
+  if (diagnostics_) diagnostics_->context.rx_events = events.size();
+  trace.result = 1;
   return true;
 }

@@ -13,6 +13,8 @@ struct SerialReadEvent
   std::string line;
 };
 
+class UartDiagnostics;
+
 class SerialTransport
 {
 public:
@@ -26,6 +28,8 @@ public:
   void closePort();
 
   bool isOpen() const;
+  void setDiagnostics(UartDiagnostics* diagnostics) { diagnostics_ = diagnostics; }
+  void diagnosePendingInput();
 
   bool writeAll(const std::string& data);
   bool readAvailable(std::string& data);
@@ -35,6 +39,7 @@ public:
   bool readEvents(std::vector<SerialReadEvent>& events);
 
 private:
+  UartDiagnostics* diagnostics_ = nullptr;
   int fd_ = -1;
 
   bool discarding_line_ = false;

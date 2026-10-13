@@ -6,6 +6,7 @@
 #include <chrono>
 #include <functional>
 #include <string>
+#include <string_view>
 
 // Foreground UART lifecycle only; equipment decisions stay in the existing Core.
 class ControllerRuntime
@@ -19,11 +20,15 @@ public:
 
   ControllerRuntime(std::string device, EquipmentController& controller,
                     Now now = Clock::now);
+  void setDiagnostics(UartDiagnostics* diagnostics);
   void poll();
   void shutdown();
   bool handleCommand(const Command& command);
 
 private:
+  UartDiagnostics* diagnostics_ = nullptr;
+  void diagnosticContext();
+  void diagnose(const char* event, std::string_view detail = {});
   void service();
   void logStatus();
   Clock::time_point next_status_{};

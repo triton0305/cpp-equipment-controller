@@ -1,4 +1,5 @@
 #include "controller_runtime.hpp"
+#include "uart_diagnostics.hpp"
 #include "ascii_protocol.hpp"
 #include <iostream>
 #include <utility>
@@ -30,8 +31,33 @@ ControllerRuntime::ControllerRuntime(std::string device, EquipmentController& co
   next_status_ = now_();
 }
 
+void ControllerRuntime::setDiagnostics(UartDiagnostics* diagnostics)
+{
+  diagnostics_ = diagnostics;
+  serial_.setDiagnostics(diagnostics);
+  diagnose("recorder_attached");
+}
+
+void ControllerRuntime::diagnosticContext()
+{
+  if (!diagnostics_) return;
+  auto& c = diagnostics_->context;
+  c.phase = !serial_.isOpen() ? "Disconnected"
+      : link_phase_ == LinkPhase::Synchronizing ? "Synchronizing" : "Operational";
+  c.sensor = last_sensor_;
+  c.sync = synchronization_started_;
+}
+
+void ControllerRuntime::diagnose(const char* event, std::string_view detail)
+{
+  if (!diagnostics_) return;
+  diagnosticContext();
+  diagnostics_->record(event, -1, -1, -1, detail);
+}
+
 void ControllerRuntime::communicationFault(const char* reason)
 {
+  diagnose("communication_fault", reason);
   sensor_.communication_ok = false;
   sensor_.temperature_valid = sensor_.humidity_valid = sensor_.pressure_valid = false;
   if (rearm_ != Rearm::Armed) rearm_ = Rearm::WaitOpen;
@@ -51,12 +77,16 @@ void ControllerRuntime::communicationFault(const char* reason)
 void ControllerRuntime::disconnect()
 {
   serial_.closePort();
+  diagnose("disconnected");
   std::cerr << "EVENT UART disconnect\n";
   next_reconnect_ = now_() + ReconnectInterval;
 }
 
 bool ControllerRuntime::sendOutputs(bool force_safe, bool resynchronize)
 {
+  diagnosticContext();
+  UartDiagnostics::Span trace(diagnostics_, "send_outputs_begin", "send_outputs_end");
+  trace.result = 0;
   force_safe = force_safe || !sensor_.communication_ok;
   DeviceState output = controller_.getDeviceState();
   if (output.buzzer_on)
@@ -120,7 +150,7 @@ bool ControllerRuntime::sendOutputs(bool force_safe, bool resynchronize)
       (resynchronize ? "\n" : "") +
       AsciiProtocol::serializeDeviceState(output) +
       state_command;
-  if (serial_.writeAll(packet)) return true;
+  if (serial_.writeAll(packet)) { trace.result = 1; return true; }
   communicationFault("UART write failed");
   disconnect();
   return false;
@@ -130,7 +160,15 @@ bool ControllerRuntime::checkSensorTimeout()
 {
   const bool synchronizing = link_phase_ == LinkPhase::Synchronizing;
   const auto started = synchronizing ? synchronization_started_ : last_sensor_;
-  if (now_() - started < SensorTimeout) return false;
+  const auto checked_at = now_();
+  if (checked_at - started < SensorTimeout) return false;
+  if (diagnostics_)
+  {
+    diagnosticContext();
+    diagnostics_->recordAt("timeout_fault", checked_at,
+                           synchronizing ? "UART synchronization timeout" : "Sensor stale");
+    serial_.diagnosePendingInput();
+  }
   communicationFault(synchronizing ? "UART synchronization timeout" : "Sensor stale");
   // A silent RX can still have a working TX: attempt the safe snapshot first.
   sendOutputs(true);
@@ -223,6 +261,9 @@ bool ControllerRuntime::handleCommand(const Command& command)
 
 void ControllerRuntime::poll()
 {
+  diagnosticContext();
+  if (diagnostics_) diagnostics_->beginPoll();
+  UartDiagnostics::Span trace(diagnostics_, "poll_begin", "poll_end");
   sequence_advanced_ = false;
   expireEnvironment();
   service();
@@ -232,10 +273,15 @@ void ControllerRuntime::poll()
 
 void ControllerRuntime::service()
 {
+  diagnosticContext();
+  UartDiagnostics::Span trace(diagnostics_, "service_begin", "service_end");
   if (!serial_.isOpen())
   {
     if (now_() < next_reconnect_) return;
-    if (!serial_.openPort(device_))
+    diagnose("open_begin");
+    const bool opened = serial_.openPort(device_);
+    diagnose("open_end");
+    if (!opened)
     {
       communicationFault("UART open failed");
       disconnect();
@@ -247,6 +293,13 @@ void ControllerRuntime::service()
     controller_.setSensorState(sensor_);
     link_phase_ = LinkPhase::Synchronizing;
     synchronization_started_ = now_();
+    if (diagnostics_)
+    {
+      ++diagnostics_->context.session;
+      diagnostics_->context.sync_seen = true;
+      diagnostics_->context.recovered_seen = false;
+    }
+    diagnose("sync_begin");
     awaiting_estop_ = false;
     door_status_received_ = estop_status_received_ = false;
     ready_timer_active_ = ready_indicator_on_ = false;
@@ -273,9 +326,12 @@ void ControllerRuntime::service()
     return;
   }
   const auto received_at = now_();
+  diagnose("batch_received");
   bool command_seen = false;
   for (const auto& event : events)
   {
+    if (diagnostics_) ++diagnostics_->context.rx_index;
+    diagnose(event.type == SerialReadEventType::Line ? "rx_event" : "rx_oversized", event.line);
     // A blocked write must not make subsequent lines from the same old RX batch
     // look freshly received. Expire before accepting data at the deadline.
     if (checkSensorTimeout()) return;
@@ -293,6 +349,7 @@ void ControllerRuntime::service()
       const bool valid = AsciiProtocol::parseSensorLine(line, candidate);
       if (valid && line.rfind("DOOR:", 0) == 0)
       {
+        diagnose("door_received", line);
         candidate_door_closed_ = candidate.door_closed;
         awaiting_estop_ = true;
         continue;
@@ -305,7 +362,9 @@ void ControllerRuntime::service()
       sensor_.door_closed = candidate_door_closed_;
       sensor_.emergency_stop = candidate.emergency_stop;
       door_status_received_ = estop_status_received_ = true;
+      diagnose("sync_estop_received", line);
       link_phase_ = LinkPhase::Operational;
+      diagnose("sync_complete");
       // The completing ESTOP follows the normal safety/output path below.
     }
     const auto command = parseCommand(line);
@@ -323,6 +382,7 @@ void ControllerRuntime::service()
     {
       controller_.setSensorState(sensor_); // Malformed measurement invalidates its flag.
       if (updateReady(now_()) && !sendOutputs(false)) return;
+      diagnose("invalid_sensor", line);
       std::cerr << "Invalid SENSOR line: " << line << '\n';
       continue;
     }
@@ -341,6 +401,7 @@ void ControllerRuntime::service()
     if (pressure_line) last_pressure_ = received_at;
     if (line.rfind("DOOR:", 0) == 0)
     {
+      diagnose("door_received", line);
       door_status_received_ = true;
       if (controller_.getState() == EquipmentState::Idle)
       {
@@ -356,6 +417,7 @@ void ControllerRuntime::service()
     }
     else if (line.rfind("ESTOP:", 0) == 0)
     {
+      diagnose("estop_received", line);
       estop_status_received_ = true;
 
       if (sensor_.emergency_stop)
@@ -365,8 +427,20 @@ void ControllerRuntime::service()
       }
     }
 
-    if (!sensor_.communication_ok) std::cerr << "EVENT sensor communication recovered\n";
+    if (!sensor_.communication_ok)
+    {
+      if (diagnostics_)
+      {
+        diagnostics_->context.recovered = now_();
+        diagnostics_->context.recovered_seen = true;
+      }
+      diagnose("recovered_log_begin");
+      std::cerr << "EVENT sensor communication recovered\n";
+      diagnose("recovered_log_end");
+    }
     last_sensor_ = received_at;
+    if (diagnostics_) diagnostics_->context.sensor_seen = true;
+    diagnose("last_sensor_updated", line);
     sensor_.communication_ok = true;
     controller_.setSensorState(sensor_);
     if (temperature_line) controller_.observeMeasurement(SensorKind::Temperature);
@@ -422,6 +496,8 @@ void ControllerRuntime::expireEnvironment()
 void ControllerRuntime::logStatus()
 {
   if (now_() < next_status_) return;
+  diagnosticContext();
+  UartDiagnostics::Span trace(diagnostics_, "status_begin", "status_end");
   next_status_ = now_() + std::chrono::seconds(1);
   const auto& d = controller_.getDeviceState();
   std::cout << "STATUS Temperature="
@@ -445,4 +521,5 @@ void ControllerRuntime::shutdown()
   controller_.handleCommand(Command{CommandType::Stop});
   if (serial_.isOpen()) sendOutputs(true);
   serial_.closePort();
+  diagnose("shutdown_complete");
 }
