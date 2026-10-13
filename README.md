@@ -30,10 +30,9 @@ Pump / Heater는 LED로 동작을 표시하고 RGB LED와 Buzzer로 장비 상�
 
 | 날짜 | 개발 내용 |
 |---|---|
-| 2026.10.08 | Controller State / Sequence · Logging · ASCII Protocol · Serial Transport · STM32 GPIO / ADC / UART · 실제 Door / E-Stop E2E |
-| 2026.10.12 | DHT11 Decoder / Production 연결 · STM32 command-loss fail-safe · Linux recovery · READY / Re-arm · Critical Safety |
-| [2026.10.13](https://github.com/triton0305/equipment-controller/commit/bf68826a3fcef151fffd86913d0bd17d8614393d) | 6초 간격 30초 공정 · 온도 / 압력 시작 자격 · 통신 단절 RED 인계 · UART 진단 |
-| [2026.10.13](https://github.com/triton0305/equipment-controller/commit/c5cbb81c065af3e47e83bf65d401320adfdbf856) | UART output coalescing · 독립 Operator CLI / Unix socket IPC · CTest 53/53 PASS · CLI 실물 확인 |
+| 2026.10.08 | Controller State / Sequence · ASCII Protocol · Serial Transport · STM32 GPIO / ADC / UART · Door / E-Stop E2E |
+| 2026.10.12 | DHT11 연동 · STM32 command-loss fail-safe · Linux recovery · READY / Re-arm · Critical Safety |
+| 2026.10.13 | 30초 공정 · 온도 / 압력 시작 자격 · UART output coalescing · 독립 Operator CLI / Unix socket IPC |
 
 ## Development Process
 
