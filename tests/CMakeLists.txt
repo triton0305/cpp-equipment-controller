@@ -130,3 +130,19 @@ foreach(scenario batch delay timestamp safety commands)
   add_test(NAME LINUX_UART_COALESCE_${scenario} COMMAND test_runtime_batch ${scenario})
   set_tests_properties(LINUX_UART_COALESCE_${scenario} PROPERTIES TIMEOUT 10)
 endforeach()
+
+add_executable(test_control_ipc transport/test_control_ipc.cpp)
+target_link_libraries(test_control_ipc PRIVATE controller_runtime control_ipc util)
+target_link_options(test_control_ipc PRIVATE -Wl,--wrap=write)
+add_test(NAME LINUX_CONTROL_IPC_HOST COMMAND test_control_ipc)
+set_tests_properties(LINUX_CONTROL_IPC_HOST PROPERTIES TIMEOUT 10)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_test(NAME LINUX_CTL_PROCESS_HOST COMMAND ${Python3_EXECUTABLE}
+  ${CMAKE_CURRENT_SOURCE_DIR}/transport/test_ctl_process.py
+  $<TARGET_FILE:equipment_controller> $<TARGET_FILE:equipment_ctl>)
+set_tests_properties(LINUX_CTL_PROCESS_HOST PROPERTIES TIMEOUT 25)
+# Process tests use independent endpoints, including under parallel CTest.
+set_tests_properties(TEST_27 PROPERTIES ENVIRONMENT
+  "EQUIPMENT_CONTROL_SOCKET=${CMAKE_CURRENT_BINARY_DIR}/test27-control.sock")
+set_tests_properties(TEST_28 PROPERTIES ENVIRONMENT
+  "EQUIPMENT_CONTROL_SOCKET=${CMAKE_CURRENT_BINARY_DIR}/test28-control.sock")

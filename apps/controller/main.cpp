@@ -10,6 +10,7 @@
 #include "uart_diagnostics.hpp"
 
 #include "controller_runtime.hpp"
+#include "control_ipc.hpp"
 
 namespace
 {
@@ -33,6 +34,10 @@ int main(int argc, char* argv[])
   std::unique_ptr<UartDiagnostics> diagnostics;
   if (diagnostic_path && *diagnostic_path) diagnostics = std::make_unique<UartDiagnostics>();
 
+  std::unique_ptr<control_ipc::Server> ipc;
+  try { ipc = std::make_unique<control_ipc::Server>(control_ipc::socketPath()); }
+  catch (const std::exception& e) { std::cerr << "IPC: " << e.what() << '\n'; return 1; }
+
   EquipmentController controller;
   ControllerRuntime runtime(argv[1], controller);
   runtime.setDiagnostics(diagnostics.get());
@@ -51,13 +56,13 @@ int main(int argc, char* argv[])
       {
         if (buffer[i] == '\n')
         {
-          const auto command = parseCommand(input);
-          if (command.type != CommandType::Invalid) runtime.handleCommand(command);
+          runtime.handleControlRequest(input);
           input.clear();
         }
         else if (buffer[i] != '\r' && input.size() < 256) input += buffer[i];
       }
     }
+    ipc->poll([&](const std::string& request) { return runtime.handleControlRequest(request); });
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
   runtime.shutdown();

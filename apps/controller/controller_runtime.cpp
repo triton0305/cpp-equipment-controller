@@ -554,3 +554,33 @@ void ControllerRuntime::shutdown()
   serial_.closePort();
   diagnose("shutdown_complete");
 }
+
+std::string ControllerRuntime::statusSnapshot() const
+{
+  const char* states[] = {"Idle", "Ready", "Run", "Error"};
+  const auto& d = controller_.getDeviceState();
+  std::ostringstream out;
+  out << "State=" << states[static_cast<int>(controller_.getState())]
+      << " Ready=" << ready_indicator_on_ << " Armed=" << (rearm_ == Rearm::Armed)
+      << " Rearm=" << static_cast<int>(rearm_)
+      << " Alarm=" << static_cast<int>(controller_.getAlarmCode())
+      << " SequenceStep=" << static_cast<int>(controller_.getSequenceStep())
+      << " Operational=" << (link_phase_ == LinkPhase::Operational)
+      << " CommunicationOK=" << sensor_.communication_ok
+      << " Door=" << (door_status_received_ ? (sensor_.door_closed ? "CLOSED" : "OPEN") : "unknown")
+      << " EStop=" << (estop_status_received_ ? (sensor_.emergency_stop ? "ON" : "OFF") : "unknown")
+      << " Pressure=" << (sensor_.pressure_valid ? std::to_string(sensor_.pressure) : "unavailable")
+      << " Temperature=" << (sensor_.temperature_valid ? measurement(sensor_.temperature) : "unavailable")
+      << " Humidity=" << (sensor_.humidity_valid ? measurement(sensor_.humidity) : "unavailable")
+      << " Pump=" << (d.pump_on ? "ON" : "OFF")
+      << " Heater=" << (d.heater_on ? "ON" : "OFF");
+  return out.str();
+}
+
+std::string ControllerRuntime::handleControlRequest(const std::string& text)
+{
+  if (text == "status") return statusSnapshot();
+  const auto command = parseCommand(text);
+  if (command.type == CommandType::Invalid) return "ERROR: invalid command";
+  return handleCommand(command) ? "OK" : "REJECTED: conditions not met, no state change, or output failure; use status";
+}

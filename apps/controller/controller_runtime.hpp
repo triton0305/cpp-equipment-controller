@@ -24,6 +24,8 @@ public:
   void poll();
   void shutdown();
   bool handleCommand(const Command& command);
+  std::string statusSnapshot() const;
+  std::string handleControlRequest(const std::string& text);
 
 private:
   UartDiagnostics* diagnostics_ = nullptr;

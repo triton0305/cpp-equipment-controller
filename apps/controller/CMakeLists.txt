@@ -3,3 +3,9 @@ target_include_directories(controller_runtime PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
 target_link_libraries(controller_runtime PUBLIC equipment_core equipment_protocol equipment_transport)
 add_executable(equipment_controller main.cpp)
 target_link_libraries(equipment_controller PRIVATE controller_runtime)
+
+add_library(control_ipc control_ipc.cpp)
+target_include_directories(control_ipc PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(equipment_controller PRIVATE control_ipc)
+add_executable(equipment_ctl ctl_main.cpp)
+target_link_libraries(equipment_ctl PRIVATE control_ipc)

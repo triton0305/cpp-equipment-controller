@@ -333,6 +333,8 @@ ctest --test-dir build --output-on-failure
 
 ### UART Run
 
+별도 터미널 CLI 사용법: [CLI Commands](docs/CLI_COMMANDS.md).
+
 기본 UART 장치 `/dev/ttyACM0`을 사용하는 경우 프로젝트 루트에서 실행합니다.
 
 ```bash
