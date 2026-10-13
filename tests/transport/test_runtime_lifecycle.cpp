@@ -122,7 +122,7 @@ int main(int argc, char* argv[])
 
     const std::array<std::string, 5> messages =
     {
-      "TEMP:32.5", "PRESSURE:70", "DOOR:CLOSED", "ESTOP:OFF", "MOTOR:OK"
+      "DOOR:CLOSED", "ESTOP:OFF", "PRESSURE:70", "TEMP:32.5", "MOTOR:OK"
     };
 
     std::string input;

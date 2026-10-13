@@ -50,6 +50,12 @@ private:
   SerialTransport serial_;
   SensorState sensor_;
 
+  enum class LinkPhase { Synchronizing, Operational };
+  LinkPhase link_phase_ = LinkPhase::Synchronizing;
+  Clock::time_point synchronization_started_{};
+  bool awaiting_estop_ = false;
+  bool candidate_door_closed_ = false;
+
   Clock::time_point last_sensor_, next_reconnect_, next_safe_refresh_;
   // E-Stop Buzzer
   static constexpr auto BuzzerDuration = std::chrono::seconds(2);

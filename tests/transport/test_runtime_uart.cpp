@@ -80,10 +80,10 @@ int main(int argc, char* argv[])
   }
 
   const std::string messages =
-    "TEMP:32.5\n"
-    "PRESSURE:70\n"
     "DOOR:CLOSED\n"
     "ESTOP:OFF\n"
+    "PRESSURE:70\n"
+    "TEMP:32.5\n"
     "MOTOR:OK\n";
 
   if (write(master, messages.data(), messages.size()) != static_cast<ssize_t>(messages.size()))
@@ -104,7 +104,7 @@ int main(int argc, char* argv[])
     "RUN_LED:OFF\n"
     "ERROR_LED:OFF\n"
     "STATE:IDLE\n";
-  const std::size_t expected_size = expected.size() * 5;
+  const std::size_t expected_size = expected.size() * 4;
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
 
   while (std::chrono::steady_clock::now() < deadline)
@@ -125,7 +125,7 @@ int main(int argc, char* argv[])
   bool passed = true;
   std::size_t pos = 0;
 
-  for (int i = 0; i < 5; ++i)
+  for (int i = 0; i < 4; ++i)
   {
     if (received.compare(pos, expected.size(), expected) != 0)
     {

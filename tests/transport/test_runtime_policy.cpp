@@ -45,14 +45,14 @@ int main()
       Fixture f; boot(f); heartbeat(f, 100, 4901);
       f.at(5900); fault(f.core); f.endpoint->drain();
       f.at(6400); f.endpoint->drain();
-      sample(f, 6400, "PRESSURE:2048\nTEMP:25\nHUMIDITY:45\n");
-      f.core.handleCommand(Command{CommandType::Reset});
-      heartbeat(f, 6500, 12001);
-      CHECK(sample(f, 12010).find("STATE:READY") == std::string::npos);
-      sample(f, 12020, "DOOR:CLOSED\nESTOP:OFF\n");
-      heartbeat(f, 12100, 17001);
-      CHECK(sample(f, 17019).find("STATE:READY") == std::string::npos);
-      CHECK(sample(f, 17020).find("STATE:READY") != std::string::npos);
+      sample(f, 6400, "PRESSURE:2048\nTEMP:25\nHUMIDITY:45\nRESET\n");
+      CHECK(f.core.getState() == EquipmentState::Error);
+      CHECK(!f.core.getSensorState().communication_ok);
+      sample(f, 6410, "DOOR:CLOSED\nESTOP:OFF\nPRESSURE:2048\nTEMP:25\nHUMIDITY:45\nRESET\n");
+      CHECK(f.core.getState() == EquipmentState::Idle);
+      heartbeat(f, 6500, 11401);
+      CHECK(sample(f, 11409).find("STATE:READY") == std::string::npos);
+      CHECK(sample(f, 11410).find("STATE:READY") != std::string::npos);
     }
     {
       Fixture f; boot(f);
@@ -152,6 +152,8 @@ int main()
       sample(f, 1520, "DOOR:CLOSED\nRESET\n");
       CHECK(f.core.getState() == EquipmentState::Error);
       sample(f, 1530, "ESTOP:OFF\nTEMP:25\nHUMIDITY:45\nRESET\n");
+      CHECK(f.core.getState() == EquipmentState::Error);
+      sample(f, 1531, "DOOR:CLOSED\nESTOP:OFF\nPRESSURE:2048\nTEMP:25\nHUMIDITY:45\nRESET\n");
       CHECK(f.core.getState() == EquipmentState::Idle);
       CHECK(sample(f, 1540, "ESTOP:ON\n").find("BUZZER:ON") != std::string::npos);
       CHECK(f.core.getState() == EquipmentState::Error);

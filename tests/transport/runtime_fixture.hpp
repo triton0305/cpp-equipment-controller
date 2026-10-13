@@ -175,7 +175,7 @@ struct Fixture
     runtime->poll();
     endpoint->drain();
 
-    receive("PRESSURE:2048\nDOOR:CLOSED\nESTOP:OFF\nTEMP:25\nHUMIDITY:45\n");
+    receive("DOOR:CLOSED\nESTOP:OFF\nPRESSURE:2048\nTEMP:25\nHUMIDITY:45\n");
     endpoint->drain();
 
     CHECK(core.getSensorState().communication_ok);

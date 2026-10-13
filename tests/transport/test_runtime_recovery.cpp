@@ -1,10 +1,27 @@
 #include "runtime_fixture.hpp"
+#include <sstream>
+
+struct EventCapture
+{
+  std::ostringstream events;
+  std::streambuf* previous = std::cerr.rdbuf(events.rdbuf());
+  ~EventCapture() { std::cerr.rdbuf(previous); }
+  unsigned recoveries() const
+  {
+    unsigned count = 0;
+    const auto text = events.str();
+    for (auto pos = text.find("EVENT sensor communication recovered");
+         pos != std::string::npos;
+         pos = text.find("EVENT sensor communication recovered", pos + 1)) ++count;
+    return count;
+  }
+};
 
 int main()
 {
   try
   {
-    // Boot is invalid until a parsed line arrives;
+    // Boot is invalid until a fresh boundary arrives;
     // no START before synchronization.
     {
       Fixture f;
@@ -42,7 +59,7 @@ int main()
     // Normal traffic refreshes the deadline;
     // arbitrary/incomplete traffic does not.
     for (const std::string noise :
-         {"", "GARBAGE\n", "TEMP:nan\n", "TEMP:bad\n", "PRESSURE:"})
+         {"", "GARBAGE\n", "TEMP:INVALID\n", "TEMP:nan\n", "TEMP:bad\n", "PRESSURE:"})
     {
       Fixture f;
 
@@ -101,7 +118,7 @@ int main()
       fault(f.core);
 
       // Old partial PRESSURE must not survive reopen.
-      f.receive("PRESSURE:2048\n");
+      f.receive("DOOR:CLOSED\nESTOP:OFF\nPRESSURE:2048\n");
 
       CHECK(
         f.core.getSensorState().communication_ok
@@ -116,7 +133,7 @@ int main()
 
       CHECK(
         f.endpoint->drain() ==
-        error_packet()
+        error_packet() + error_packet()
       );
 
       f.core.handleCommand(Command{CommandType::Start});
@@ -184,6 +201,13 @@ int main()
       );
 
       fault(f.core);
+      EventCapture capture;
+      f.receive("56\nOOR:CLOSED\nESTOP:OFF\nPRESSURE:2048\nSTART\nRESET\n");
+      fault(f.core);
+      CHECK(capture.recoveries() == 0);
+      CHECK(f.endpoint->drain().empty());
+      f.at(600);
+      CHECK(f.endpoint->drain() == safe_packet(true));
 
       f.receive(
         "DOOR:CLOSED\n"
@@ -198,13 +222,173 @@ int main()
       );
 
       safe(f.core);
+      CHECK(f.core.getAlarmCode() == AlarmCode::CommunicationFault);
+      CHECK(capture.recoveries() == 1);
 
       CHECK(
         f.endpoint->drain() ==
         error_packet() +
-        error_packet() +
         error_packet()
       );
+    }
+
+    // First complete boundary is accepted, even across polls. Partial data
+    // remains private; every intervening line cancels the pending DOOR.
+    for (const std::string interruption :
+         {"PRESSURE:2048", "TEMP:25", "garbage", "OOR:CLOSED", "ESTOP:bad", "RESET", ""})
+    {
+      Fixture f;
+      EventCapture capture;
+      f.runtime->poll(); f.endpoint->drain();
+      const bool old_door = f.core.getSensorState().door_closed;
+      f.receive("56\nOOR:CLOSED\nESTOP:OFF\nPRESSURE:2048\n");
+      CHECK(!f.core.getSensorState().communication_ok);
+      f.receive("DOOR:OPEN\n");
+      CHECK(f.core.getSensorState().door_closed == old_door);
+      CHECK(!f.runtime->handleCommand(Command{CommandType::Start}));
+      CHECK(!f.runtime->handleCommand(Command{CommandType::Reset}));
+      f.receive(interruption + "\nESTOP:OFF\n");
+      CHECK(!f.core.getSensorState().communication_ok);
+      CHECK(f.core.getState() == EquipmentState::Idle);
+      CHECK(capture.recoveries() == 0);
+      f.at(100);
+      CHECK(f.endpoint->drain() == safe_packet(false));
+      f.receive("DOOR:OPEN\nDOOR:CLOSED\n");
+      CHECK(!f.core.getSensorState().communication_ok);
+      f.receive("ESTOP:OFF\n");
+      CHECK(f.core.getSensorState().communication_ok);
+      CHECK(f.core.getSensorState().door_closed);
+      CHECK(!f.core.getSensorState().emergency_stop);
+      CHECK(capture.recoveries() == 1);
+      CHECK(!f.core.getSensorState().temperature_valid);
+      CHECK(!f.core.getSensorState().humidity_valid);
+      CHECK(f.endpoint->drain().find("STATE:READY") == std::string::npos);
+      safe(f.core);
+    }
+
+    for (const std::string dht : {"", "TEMP:INVALID\nHUMIDITY:INVALID\n"})
+    {
+      Fixture f; EventCapture capture;
+      f.runtime->poll(); f.endpoint->drain();
+      f.receive("DOOR:CLOSED\nESTOP:OFF\n" + dht);
+      CHECK(f.core.getSensorState().communication_ok);
+      CHECK(!f.core.getSensorState().temperature_valid);
+      CHECK(!f.core.getSensorState().humidity_valid);
+      CHECK(capture.recoveries() == 1);
+      f.at(900); f.receive("PRESSURE:2048\n");
+      f.at(1000);
+      CHECK(f.core.getSensorState().communication_ok);
+      CHECK(capture.recoveries() == 1);
+      f.at(1899); CHECK(f.core.getSensorState().communication_ok);
+      f.at(1900); fault(f.core);
+    }
+
+    // Noise never extends the separate open-to-boundary deadline.
+    {
+      Fixture f; EventCapture capture;
+      f.runtime->poll(); f.endpoint->drain();
+      for (unsigned t = 100; t < 1000; t += 100)
+      {
+        f.at(t);
+        f.receive("DOOR:CLOSED\nTEMP:25\nESTOP:OFF\nPRESSURE:2048\ngarbage\n");
+        CHECK(!f.core.getSensorState().communication_ok);
+        CHECK(f.core.getState() == EquipmentState::Idle);
+        CHECK(f.endpoint->drain() == safe_packet(false));
+      }
+      f.at(999); f.receive("DOOR:CLOSED\n");
+      f.now += std::chrono::milliseconds(1);
+      f.receive("ESTOP:OFF\n");
+      fault(f.core);
+      CHECK(capture.recoveries() == 0);
+      CHECK(f.endpoint->drain() == safe_packet(true));
+      f.at(1499); CHECK(f.endpoint->drain().empty());
+      f.at(1500); CHECK(f.endpoint->drain() == "\n" + safe_packet(true));
+    }
+
+    // Framing loss must be observed in order, including across read batches.
+    for (const bool split : {false, true})
+    {
+      Fixture f; EventCapture capture;
+      f.runtime->poll(); f.endpoint->drain();
+      if (split)
+      {
+        f.receive("DOOR:CLOSED\n" + std::string(256, 'X'));
+        f.receive("X");
+        f.receive("\nESTOP:OFF\n");
+      }
+      else f.receive("DOOR:CLOSED\n" + std::string(257, 'X') + "\nESTOP:OFF\n");
+      CHECK(!f.core.getSensorState().communication_ok);
+      CHECK(f.core.getState() == EquipmentState::Idle);
+      CHECK(capture.recoveries() == 0);
+      CHECK(!f.runtime->handleCommand(Command{CommandType::Start}));
+      f.at(999);
+      CHECK(f.endpoint->drain() == safe_packet(false));
+      f.receive(std::string(257, 'X') + "\n");
+      f.at(1000); fault(f.core);
+      CHECK(capture.recoveries() == 0);
+    }
+    for (const std::string prefix : {"", "DOOR:CLOSED\n"})
+    {
+      Fixture f; EventCapture capture;
+      f.runtime->poll(); f.endpoint->drain();
+      f.receive(prefix + std::string(257, 'X') + "\nDOOR:CLOSED\nESTOP:OFF\n");
+      CHECK(f.core.getSensorState().communication_ok);
+      CHECK(f.core.getState() == EquipmentState::Idle);
+      CHECK(capture.recoveries() == 1);
+      safe(f.core);
+    }
+    // Operational discard neither faults immediately nor refreshes liveness.
+    for (const bool normal_traffic : {false, true})
+    {
+      Fixture f;
+      f.runtime->poll(); f.endpoint->drain();
+      f.receive("DOOR:CLOSED\nESTOP:OFF\n");
+      f.at(900);
+      f.receive(std::string(257, 'X') + "\n");
+      CHECK(f.core.getSensorState().communication_ok);
+      if (normal_traffic) f.receive("PRESSURE:2048\n");
+      f.at(999); CHECK(f.core.getSensorState().communication_ok);
+      f.at(1000);
+      if (normal_traffic)
+      {
+        CHECK(f.core.getSensorState().communication_ok);
+        f.at(1899); CHECK(f.core.getSensorState().communication_ok);
+        f.at(1900);
+      }
+      fault(f.core);
+    }
+
+    // Cold boot safety is evaluated immediately on the completing ESTOP.
+    {
+      Fixture f;
+      f.runtime->poll(); f.endpoint->drain();
+      f.receive("DOOR:CLOSED\nESTOP:ON\n");
+      CHECK(f.core.getSensorState().communication_ok);
+      CHECK(f.core.getAlarmCode() == AlarmCode::EmergencyStop);
+      safe(f.core);
+    }
+
+    // B1 packet can reset after recovery in the same RX batch, then must
+    // qualify READY for a new full five seconds.
+    {
+      Fixture f; f.startRunning();
+      close(f.endpoint->master); f.endpoint->master = -1;
+      f.runtime->poll(); fault(f.core);
+      f.attach(); f.at(500); f.endpoint->drain();
+      f.receive("RESET\nDOOR:CLOSED\nESTOP:OFF\nPRESSURE:2048\nTEMP:25\nHUMIDITY:45\nRESET\n");
+      CHECK(f.core.getState() == EquipmentState::Idle);
+      CHECK(f.core.getSensorState().communication_ok);
+      CHECK(f.endpoint->drain().find("STATE:READY") == std::string::npos);
+      CHECK(!f.runtime->handleCommand(Command{CommandType::Start}));
+      for (unsigned t = 600; t < 5500; t += 100)
+      {
+        f.now = ControllerRuntime::Clock::time_point{} + std::chrono::milliseconds(t);
+        f.receive("PRESSURE:2048\nTEMP:25\nHUMIDITY:45\n");
+        CHECK(f.endpoint->drain().find("STATE:READY") == std::string::npos);
+      }
+      f.at(5499); CHECK(f.endpoint->drain().find("STATE:READY") == std::string::npos);
+      f.at(5500); CHECK(f.endpoint->drain().find("STATE:READY") != std::string::npos);
+      safe(f.core);
     }
 
     // Real runtime write-failure branch:

@@ -128,8 +128,10 @@ bool ControllerRuntime::sendOutputs(bool force_safe, bool resynchronize)
 
 bool ControllerRuntime::checkSensorTimeout()
 {
-  if (now_() - last_sensor_ < SensorTimeout) return false;
-  communicationFault("Sensor stale");
+  const bool synchronizing = link_phase_ == LinkPhase::Synchronizing;
+  const auto started = synchronizing ? synchronization_started_ : last_sensor_;
+  if (now_() - started < SensorTimeout) return false;
+  communicationFault(synchronizing ? "UART synchronization timeout" : "Sensor stale");
   // A silent RX can still have a working TX: attempt the safe snapshot first.
   sendOutputs(true);
   disconnect();
@@ -192,7 +194,8 @@ bool ControllerRuntime::updateReady(Clock::time_point now)
 
 bool ControllerRuntime::handleCommand(const Command& command)
 {
-  if (!serial_.isOpen() || checkSensorTimeout()) return false;
+  if (!serial_.isOpen() || checkSensorTimeout() ||
+      link_phase_ != LinkPhase::Operational) return false;
   expireEnvironment();
   updateReady(now_());
   if (command.type == CommandType::Start && !ready_indicator_on_) return false;
@@ -235,7 +238,11 @@ void ControllerRuntime::service()
     // Opening the port neither validates sensors nor clears the Core error.
     sensor_.communication_ok = false;
     controller_.setSensorState(sensor_);
-    last_sensor_ = now_(); // First valid line must arrive within this deadline.
+    link_phase_ = LinkPhase::Synchronizing;
+    synchronization_started_ = now_();
+    awaiting_estop_ = false;
+    door_status_received_ = estop_status_received_ = false;
+    ready_timer_active_ = ready_indicator_on_ = false;
     if (!sendOutputs(true, true)) return;
     next_safe_refresh_ = now_() + SafeRefreshInterval;
     return;
@@ -249,8 +256,8 @@ void ControllerRuntime::service()
   {
     if (!sendOutputs(false)) return;
   }
-  std::vector<std::string> lines;
-  if (!serial_.readLines(lines))
+  std::vector<SerialReadEvent> events;
+  if (!serial_.readEvents(events))
   {
     communicationFault("UART read failed");
     disconnect();
@@ -258,11 +265,40 @@ void ControllerRuntime::service()
   }
   const auto received_at = now_();
   bool command_seen = false;
-  for (const auto& line : lines)
+  for (const auto& event : events)
   {
     // A blocked write must not make subsequent lines from the same old RX batch
     // look freshly received. Expire before accepting data at the deadline.
     if (checkSensorTimeout()) return;
+    if (event.type == SerialReadEventType::OversizedLineDiscarded)
+    {
+      awaiting_estop_ = false;
+      continue; // Framing discontinuities never refresh either deadline.
+    }
+    const auto& line = event.line;
+    if (link_phase_ == LinkPhase::Synchronizing)
+    {
+      // Only adjacent parsed DOOR -> ESTOP fields establish a new session.
+      // Keep partial candidates out of the operational SensorState.
+      SensorState candidate = sensor_;
+      const bool valid = AsciiProtocol::parseSensorLine(line, candidate);
+      if (valid && line.rfind("DOOR:", 0) == 0)
+      {
+        candidate_door_closed_ = candidate.door_closed;
+        awaiting_estop_ = true;
+        continue;
+      }
+      const bool synchronized = awaiting_estop_ && valid &&
+          line.rfind("ESTOP:", 0) == 0;
+      awaiting_estop_ = false;
+      if (!synchronized) continue;
+
+      sensor_.door_closed = candidate_door_closed_;
+      sensor_.emergency_stop = candidate.emergency_stop;
+      door_status_received_ = estop_status_received_ = true;
+      link_phase_ = LinkPhase::Operational;
+      // The completing ESTOP follows the normal safety/output path below.
+    }
     const auto command = parseCommand(line);
     if (command.type != CommandType::Invalid)
     {

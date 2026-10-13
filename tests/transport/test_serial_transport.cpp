@@ -7,8 +7,60 @@
 #include "serial_transport.hpp"
 
 
+// Check the public framing API over a real PTY without changing legacy output.
+static bool orderedEvents()
+{
+  const int master = posix_openpt(O_RDWR | O_NOCTTY);
+  if (master < 0) return false;
+  SerialTransport serial;
+  bool ok = grantpt(master) == 0 && unlockpt(master) == 0;
+  if (ok) ok = ptsname(master) && serial.openPort(ptsname(master));
+  std::vector<SerialReadEvent> events;
+  auto receive = [&](const std::string& bytes)
+  {
+    return write(master, bytes.data(), bytes.size()) == static_cast<ssize_t>(bytes.size()) &&
+        serial.readEvents(events);
+  };
+  auto line = [&](std::size_t i, const std::string& value)
+  {
+    return events[i].type == SerialReadEventType::Line && events[i].line == value;
+  };
+  auto discarded = [&](std::size_t i)
+  {
+    return events[i].type == SerialReadEventType::OversizedLineDiscarded && events[i].line.empty();
+  };
+  const std::string oversized(257, 'X');
+  if (ok) ok = receive("DOOR:CLOSED\n" + oversized + "\nESTOP:OFF\n") &&
+      events.size() == 3 && line(0, "DOOR:CLOSED") && discarded(1) && line(2, "ESTOP:OFF");
+  if (ok) ok = receive(oversized + "\nDOOR:CLOSED\nESTOP:OFF\n") &&
+      events.size() == 3 && discarded(0) && line(1, "DOOR:CLOSED") && line(2, "ESTOP:OFF");
+  // Overflow is observable immediately, even before the terminating newline.
+  if (ok) ok = receive("DOOR:CLOSED\n" + std::string(256, 'X')) &&
+      events.size() == 1 && line(0, "DOOR:CLOSED");
+  if (ok) ok = receive("X") && events.size() == 1 && discarded(0);
+  if (ok) ok = receive("more discarded bytes") && events.empty();
+  if (ok) ok = receive("\nESTOP:OFF\n") && events.size() == 1 && line(0, "ESTOP:OFF");
+  // The limit itself is still a complete line, and the legacy API filters events.
+  if (ok) ok = receive(std::string(256, 'X') + "\n") &&
+      events.size() == 1 && line(0, std::string(256, 'X'));
+  const auto legacy_input = oversized + "\nOK\n";
+  std::vector<std::string> lines;
+  if (ok) ok = write(master, legacy_input.data(), legacy_input.size()) ==
+      static_cast<ssize_t>(legacy_input.size()) && serial.readLines(lines) &&
+      lines == std::vector<std::string>{"OK"};
+  serial.closePort();
+  close(master);
+  return ok;
+}
+
+
 int main()
 {
+  if (!orderedEvents())
+  {
+    std::cerr << "Ordered framing event regression failed\n";
+    return 1;
+  }
   std::cout << "\n[TEST 20] Serial transport basic\n";
 
   SerialTransport serial;

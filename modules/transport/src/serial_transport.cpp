@@ -246,6 +246,18 @@ bool SerialTransport::readLines(
 {
   lines.clear();
 
+  std::vector<SerialReadEvent> events;
+  if (!readEvents(events)) return false;
+  for (const auto& event : events)
+  {
+    if (event.type == SerialReadEventType::Line) lines.push_back(event.line);
+  }
+  return true;
+}
+
+bool SerialTransport::readEvents(std::vector<SerialReadEvent>& events)
+{
+  events.clear();
   std::string received;
 
   if (!readAvailable(received))
@@ -274,7 +286,7 @@ bool SerialTransport::readLines(
         line.pop_back();
       }
 
-      lines.push_back(line);
+      events.push_back({SerialReadEventType::Line, line});
       rx_buffer_.clear();
       continue;
     }
@@ -283,6 +295,7 @@ bool SerialTransport::readLines(
     {
       rx_buffer_.clear();
       discarding_line_ = true;
+      events.push_back({SerialReadEventType::OversizedLineDiscarded, {}});
       continue;
     }
 

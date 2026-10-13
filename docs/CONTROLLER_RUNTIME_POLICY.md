@@ -9,6 +9,17 @@
 HW VERIFIED, Stepper 미검증, OLED software 검증 / hardware failure 기록은 변경하지 않았다.
 에이전트는 commit / push / flash를 수행하지 않았다.
 
+## 2026-10-13 UART 동기화 후속 정책
+
+open 직후 Synchronizing에서 safe refresh를 유지하고 fresh DOOR → 바로 다음 valid ESTOP
+경계가 완성되어야 Operational/communication recovery로 전환한다. 부분 후보는 Core에 노출하지 않는다.
+동기화 중 START/RESET은 거부하며 READY를 시작하지 않는다. open 기준 1000 ms deadline은
+noise/부분 센서 수신으로 연장되지 않는다. Operational 이후 기존 valid Sensor line liveness와
+개별 측정 freshness를 유지한다. DHT INVALID/부재는 동기화 완료를 막지 않는다.
+Error latch는 reconnect로 해제하지 않으며 같은 batch의 후속 B1 RESET은 기존 guard로 평가한다.
+이번 reconnect 변경은 **HW 미검증**이다. [현재 통신 정책과 회귀 검증](COMMUNICATION_SAFETY_PHASE2.md)을 참조한다.
+아래 과거 검증 결과는 당시 기록이며 이번 변경의 HW 증거로 사용하지 않는다.
+
 ## 구현과 적용 범위
 
 - 기존 작업 트리의 STATE 프로토콜, Idle E-Stop 검출, buzzer timer 변경을 유지했다.
