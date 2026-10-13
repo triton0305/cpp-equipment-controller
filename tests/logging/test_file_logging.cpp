@@ -74,22 +74,22 @@ int main()
       controller.handleCommand(Command{CommandType::Start});
       for (int i = 0; i < 6; ++i)
       {
-        controller.update();
+        controller.update(std::chrono::seconds(12));
       }
       controller.handleCommand(Command{CommandType::Stop});
       controller.handleCommand(Command{CommandType::Start});
       for (int i = 0; i < 6; ++i)
       {
-        controller.update();
+        controller.update(std::chrono::seconds(12));
       }
 
       SensorState sensor = normalSensors();
       sensor.emergency_stop = true;
       controller.setSensorState(sensor);
-      controller.update();
+      controller.update(std::chrono::seconds(12));
       // Match the existing repeated-fault scenario, now checking the file sink.
-      controller.update();
-      controller.update();
+      controller.update(std::chrono::seconds(12));
+      controller.update(std::chrono::seconds(12));
       sensor.emergency_stop = false;
       controller.setSensorState(sensor);
       controller.handleCommand(Command{CommandType::Reset});
@@ -100,9 +100,13 @@ int main()
       "[INFO] Logger initialized",
       "[WARNING] Warning test",
       "[ERROR] Error test",
-      "[INFO] START accepted: IDLE -> READY",
+      "[INFO] START accepted: IDLE -> RUN",
+      "[INFO] PROCESS START",
+      "[INFO] PROCESS HEATER ON",
       "[INFO] STOP accepted: -> IDLE",
-      "[INFO] START accepted: IDLE -> READY",
+      "[INFO] START accepted: IDLE -> RUN",
+      "[INFO] PROCESS START",
+      "[INFO] PROCESS HEATER ON",
       "[ERROR] FAULT detected: alarm=5",
       "[INFO] RESET accepted: ERROR -> IDLE"
     };
@@ -123,7 +127,7 @@ int main()
     }
     require(!input.bad(), "Log file read failed");
     require(actual == expected,
-            "Log file level/message/order/count mismatch (expected 8 lines, got " +
+            "Log file level/message/order/count mismatch (unexpected line count: " +
             std::to_string(actual.size()) + ")");
 
     std::cout << "[TEST 29] File logging PASS: levels, event order, "

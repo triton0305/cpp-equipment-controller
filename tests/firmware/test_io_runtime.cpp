@@ -418,7 +418,7 @@ int main(int argc, char **argv)
     tx.clear();
   };
   consume(); controller.handleCommand(Command{CommandType::Start});
-  for (unsigned i = 0; i < 6; ++i) controller.update();
+  for (unsigned i = 0; i < 6; ++i) controller.update(std::chrono::seconds(12));
   CHECK(controller.getDeviceState().pump_on);
   send(AsciiProtocol::serializeDeviceState(controller.getDeviceState()));
   check_devices(controller.getDeviceState());
@@ -436,7 +436,7 @@ int main(int argc, char **argv)
     sensors.pressure = 2048;
     controller.setSensorState(sensors);
     controller.handleCommand(Command{CommandType::Start});
-    for (unsigned i = 0; i < 4; ++i) controller.update();
+    for (unsigned i = 0; i < 4; ++i) controller.update(std::chrono::seconds(12));
     GPIOB->input = ESTOP_SW_Pin | (door_fault ? DOOR_SW_Pin : 0);
     raw_adc = door_fault ? 2048 : 0;
     poll(); poll(); tick += 100; poll(); poll(); consume();

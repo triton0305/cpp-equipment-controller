@@ -375,7 +375,7 @@ int main()
       close(f.endpoint->master); f.endpoint->master = -1;
       f.runtime->poll(); fault(f.core);
       f.attach(); f.at(500); f.endpoint->drain();
-      f.receive("RESET\nDOOR:CLOSED\nESTOP:OFF\nPRESSURE:2048\nTEMP:25\nHUMIDITY:45\nRESET\n");
+      f.receive("RESET\nDOOR:CLOSED\nESTOP:OFF\nPRESSURE:1500\nTEMP:25\nHUMIDITY:45\nRESET\n");
       CHECK(f.core.getState() == EquipmentState::Idle);
       CHECK(f.core.getSensorState().communication_ok);
       CHECK(f.endpoint->drain().find("STATE:READY") == std::string::npos);
@@ -383,7 +383,7 @@ int main()
       for (unsigned t = 600; t < 5500; t += 100)
       {
         f.now = ControllerRuntime::Clock::time_point{} + std::chrono::milliseconds(t);
-        f.receive("PRESSURE:2048\nTEMP:25\nHUMIDITY:45\n");
+        f.receive("PRESSURE:1500\nTEMP:25\nHUMIDITY:45\n");
         CHECK(f.endpoint->drain().find("STATE:READY") == std::string::npos);
       }
       f.at(5499); CHECK(f.endpoint->drain().find("STATE:READY") == std::string::npos);

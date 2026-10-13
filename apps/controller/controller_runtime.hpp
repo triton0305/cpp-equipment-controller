@@ -35,9 +35,11 @@ private:
   bool sequence_advanced_ = false;
   EquipmentState reported_state_ = EquipmentState::Idle;
   void updateController(bool advance = false);
-  static constexpr auto RunDuration = std::chrono::seconds(30);
-  Clock::time_point run_started_{};
-  bool run_timer_active_ = false;
+  Clock::time_point process_started_{};
+  bool process_timer_active_ = false;
+  // Start qualification only; independent of Core critical safety thresholds.
+  static constexpr double StartTemperatureMin = 20.0, StartTemperatureMax = 40.0;
+  static constexpr int StartPressureMin = 1000, StartPressureMax = 2000;
   bool updateReady(Clock::time_point now);
   void communicationFault(const char* reason);
   void disconnect();

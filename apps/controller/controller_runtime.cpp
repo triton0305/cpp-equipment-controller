@@ -141,11 +141,14 @@ bool ControllerRuntime::checkSensorTimeout()
 void ControllerRuntime::updateController(bool advance)
 {
   const auto previous = controller_.getState();
-  const bool completed = run_timer_active_ && now_() - run_started_ >= RunDuration;
+  const auto elapsed = process_timer_active_
+      ? std::chrono::duration_cast<std::chrono::milliseconds>(now_() - process_started_)
+      : std::chrono::milliseconds::zero();
+  const bool completed = process_timer_active_ && elapsed >= EquipmentController::ProcessDuration;
   // Each RX line still checks safety, but at most one sequence update per poll.
-  if ((advance || completed) && !sequence_advanced_)
+  if ((advance || process_timer_active_) && !sequence_advanced_)
   {
-    controller_.update(completed);
+    controller_.update(elapsed);
     sequence_advanced_ = true;
   }
   else controller_.checkSafety();
@@ -154,12 +157,7 @@ void ControllerRuntime::updateController(bool advance)
     rearm_ = Rearm::WaitOpen;
     ready_timer_active_ = ready_indicator_on_ = false;
   }
-  if (controller_.getState() == EquipmentState::Run && !run_timer_active_)
-  {
-    run_started_ = now_();
-    run_timer_active_ = true;
-  }
-  if (controller_.getState() != EquipmentState::Run) run_timer_active_ = false;
+  if (controller_.getState() != EquipmentState::Run) process_timer_active_ = false;
   if (controller_.getState() != reported_state_)
   {
     reported_state_ = controller_.getState();
@@ -171,7 +169,10 @@ void ControllerRuntime::updateController(bool advance)
 bool ControllerRuntime::updateReady(Clock::time_point now)
 {
   const bool previous = ready_indicator_on_;
-  const bool safe = serial_.isOpen() && sensor_.communication_ok &&
+  const bool safe = serial_.isOpen() && link_phase_ == LinkPhase::Operational &&
+      sensor_.communication_ok && sensor_.temperature_valid && sensor_.pressure_valid &&
+      sensor_.temperature >= StartTemperatureMin && sensor_.temperature <= StartTemperatureMax &&
+      sensor_.pressure >= StartPressureMin && sensor_.pressure <= StartPressureMax &&
       door_status_received_ && estop_status_received_ && sensor_.door_closed &&
       !sensor_.emergency_stop && controller_.getState() == EquipmentState::Idle &&
       controller_.getSequenceStep() == SequenceStep::None && rearm_ == Rearm::Armed;
@@ -203,10 +204,16 @@ bool ControllerRuntime::handleCommand(const Command& command)
       (controller_.getState() != EquipmentState::Error ||
        !door_status_received_ || !estop_status_received_)) return false;
   const auto before = controller_.getState();
+  const auto command_time = now_();
   controller_.handleCommand(command);
   if (controller_.getState() == before) return false;
+  if (command.type == CommandType::Start)
+  {
+    process_started_ = command_time;
+    process_timer_active_ = true;
+  }
   if (command.type == CommandType::Reset) rearm_ = Rearm::Armed;
-  if (controller_.getState() != EquipmentState::Run) run_timer_active_ = false;
+  if (controller_.getState() != EquipmentState::Run) process_timer_active_ = false;
   std::cerr << "EVENT command=" << static_cast<int>(command.type)
             << " state=" << static_cast<int>(controller_.getState()) << '\n';
   // START/STOP/RESET always discard qualification accumulated for a previous cycle.
@@ -249,6 +256,8 @@ void ControllerRuntime::service()
   }
 
   if (checkSensorTimeout()) return;
+  // Expiry at poll entry must reset qualification before fresh RX can restore it.
+  if (updateReady(now_()) && !sendOutputs(false)) return;
 
   if (serial_.isOpen() &&
       buzzer_timer_active_ &&
@@ -313,6 +322,7 @@ void ControllerRuntime::service()
     if (!AsciiProtocol::parseSensorLine(line, sensor_))
     {
       controller_.setSensorState(sensor_); // Malformed measurement invalidates its flag.
+      if (updateReady(now_()) && !sendOutputs(false)) return;
       std::cerr << "Invalid SENSOR line: " << line << '\n';
       continue;
     }
@@ -322,6 +332,7 @@ void ControllerRuntime::service()
         (pressure_line && !sensor_.pressure_valid))
     {
       controller_.setSensorState(sensor_);
+      if (updateReady(now_()) && !sendOutputs(false)) return;
       std::cerr << "EVENT invalid measurement: " << line << '\n';
       continue; // Failed measurements cannot refresh the communication deadline.
     }
@@ -371,7 +382,7 @@ void ControllerRuntime::service()
 
   if (checkSensorTimeout()) return;
 
-  // Full RX batches and command input cannot compress the preparation sequence.
+  // Sensor safety is checked before advancing the elapsed-time process.
   expireEnvironment();
   if (sensor_.communication_ok)
   {

@@ -65,7 +65,7 @@ int main()
       controller.handleCommand(Command{CommandType::Start});
       for (int i = 0; i < test.updatesBeforeFault; ++i)
       {
-        controller.update();
+        controller.update(std::chrono::seconds(12));
       }
 
       SensorState sensor = normalSensors();
@@ -78,7 +78,7 @@ int main()
         require(controller.getState() != EquipmentState::Error, "One critical sample must not latch");
         controller.observeMeasurement(kind);
       }
-      controller.update();
+      controller.update(std::chrono::seconds(12));
 
       const std::string context(test.name);
       require(controller.getState() == EquipmentState::Error &&
@@ -104,7 +104,7 @@ int main()
                 "Recovered RESET scenario was not reached");
         require(!controller.getDeviceState().valve_open,
                 "Valve must be closed after recovery RESET");
-        controller.update();
+        controller.update(std::chrono::seconds(12));
         require(!controller.getDeviceState().valve_open,
                 "Valve must remain closed after RESET + update");
       }

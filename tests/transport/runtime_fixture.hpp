@@ -184,7 +184,7 @@ struct Fixture
 
     for (unsigned i = 0; i < 6; ++i)
     {
-      core.update();
+      core.update(std::chrono::seconds(12));
     }
 
     CHECK(

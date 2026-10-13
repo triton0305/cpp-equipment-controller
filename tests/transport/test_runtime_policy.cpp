@@ -1,7 +1,7 @@
 #include "runtime_fixture.hpp"
 #include <sstream>
 
-static std::string sample(Fixture& f, unsigned ms, const std::string& data = "PRESSURE:2048\nTEMP:25\nHUMIDITY:45\n")
+static std::string sample(Fixture& f, unsigned ms, const std::string& data = "PRESSURE:1500\nTEMP:25\nHUMIDITY:45\n")
 {
   f.now = ControllerRuntime::Clock::time_point{} + std::chrono::milliseconds(ms);
   f.receive(data);
@@ -14,12 +14,80 @@ static void heartbeat(Fixture& f, unsigned from, unsigned until)
 static void boot(Fixture& f)
 {
   f.runtime->poll(); f.endpoint->drain();
-  sample(f, 0, "DOOR:CLOSED\nESTOP:OFF\nPRESSURE:2048\nTEMP:25\nHUMIDITY:45\n");
+  sample(f, 0, "DOOR:CLOSED\nESTOP:OFF\nPRESSURE:1500\nTEMP:25\nHUMIDITY:45\n");
 }
+static void test_start_qualification()
+{
+  const auto data = [](const std::string& temp, const std::string& pressure) {
+    return "DOOR:CLOSED\nESTOP:OFF\nTEMP:" + temp + "\nPRESSURE:" + pressure + "\nHUMIDITY:70\n";
+  };
+  for (const auto& pair : {std::pair<const char*, const char*>{"20", "1000"},
+      {"40", "2000"}, {"19.9", "1500"}, {"40.1", "1500"}, {"25", "999"}, {"25", "2001"}})
+  {
+    Fixture f; f.runtime->poll(); f.endpoint->drain();
+    const auto readings = data(pair.first, pair.second);
+    for (unsigned t = 0; t < 5000; t += 100)
+      CHECK(sample(f, t, readings).find("STATE:READY") == std::string::npos);
+    const bool qualifies = std::string(pair.first) == "20" || std::string(pair.first) == "40";
+    CHECK((sample(f, 5000, readings).find("STATE:READY") != std::string::npos) == qualifies);
+    CHECK(f.core.getState() == EquipmentState::Idle);
+    sample(f, 5001, "START\n");
+    CHECK(f.core.getState() == (qualifies ? EquipmentState::Run : EquipmentState::Idle));
+    if (!qualifies) safe(f.core);
+    else
+    {
+      // Start qualification limits never become RUN fault thresholds.
+      sample(f, 5010, data("19", "2100") + data("19", "2100"));
+      CHECK(f.core.getState() == EquipmentState::Run);
+      sample(f, 5020, "HUMIDITY:90\n"); CHECK(f.core.getState() == EquipmentState::Run);
+      sample(f, 5030, "HUMIDITY:90\n");
+      CHECK(f.core.getAlarmCode() == AlarmCode::HumidityCritical); safe(f.core);
+    }
+  }
+  // Both pre-READY interruption and the READY -> START race require a fresh 5s.
+  for (unsigned interrupt_at : {4900U, 5010U})
+  for (const auto& bad : {"TEMP:19.9\n", "TEMP:40.1\n", "PRESSURE:999\n", "PRESSURE:2001\n",
+      "TEMP:INVALID\n", "PRESSURE:INVALID\n", "TEMP:nan\n", "PRESSURE:bad\n"})
+  {
+    struct Events {
+      std::ostringstream text;
+      std::streambuf* old = std::cerr.rdbuf(text.rdbuf());
+      ~Events() { std::cerr.rdbuf(old); }
+    } events;
+    Fixture f; boot(f); heartbeat(f, 100, interrupt_at);
+    sample(f, interrupt_at, std::string(bad) + "START\n");
+    CHECK(f.core.getState() == EquipmentState::Idle); safe(f.core);
+    CHECK(events.text.str().find("PROCESS START") == std::string::npos);
+    // Recovery in the same batch must not retain previous qualification time.
+    sample(f, interrupt_at + 1, std::string(bad) + data("25", "1500") + "START\n");
+    CHECK(f.core.getState() == EquipmentState::Idle); safe(f.core);
+    heartbeat(f, interrupt_at + 101, interrupt_at + 4902);
+    CHECK(sample(f, interrupt_at + 5000).find("STATE:READY") == std::string::npos);
+    CHECK(events.text.str().find("PROCESS START") == std::string::npos);
+    CHECK(sample(f, interrupt_at + 5001).find("STATE:READY") != std::string::npos);
+    sample(f, interrupt_at + 5002, "START\n"); CHECK(f.core.getState() == EquipmentState::Run);
+    CHECK(!f.core.getDeviceState().pump_on && !f.core.getDeviceState().heater_on);
+  }
+  // Expired readings reset qualification even if refreshed in that same poll.
+  for (bool temperature : {false, true})
+  {
+    Fixture f; boot(f); heartbeat(f, 100, 5001);
+    const unsigned expiry = temperature ? 10000 : 6000;
+    const auto other = temperature ? "DOOR:CLOSED\nESTOP:OFF\nPRESSURE:1500\n" : "DOOR:CLOSED\nESTOP:OFF\nTEMP:25\n";
+    for (unsigned t = 5100; t < expiry; t += 100) sample(f, t, other);
+    sample(f, expiry, data("25", "1500") + "START\n");
+    CHECK(f.core.getState() == EquipmentState::Idle); safe(f.core);
+    heartbeat(f, expiry + 100, expiry + 5000);
+    CHECK(sample(f, expiry + 4999).find("STATE:READY") == std::string::npos);
+    CHECK(sample(f, expiry + 5000).find("STATE:READY") != std::string::npos);
+  }
+}
+
 int main()
 {
   try
   {
+    test_start_qualification();
     {
       Fixture f; boot(f);
       heartbeat(f, 100, 4901);
@@ -45,10 +113,10 @@ int main()
       Fixture f; boot(f); heartbeat(f, 100, 4901);
       f.at(5900); fault(f.core); f.endpoint->drain();
       f.at(6400); f.endpoint->drain();
-      sample(f, 6400, "PRESSURE:2048\nTEMP:25\nHUMIDITY:45\nRESET\n");
+      sample(f, 6400, "PRESSURE:1500\nTEMP:25\nHUMIDITY:45\nRESET\n");
       CHECK(f.core.getState() == EquipmentState::Error);
       CHECK(!f.core.getSensorState().communication_ok);
-      sample(f, 6410, "DOOR:CLOSED\nESTOP:OFF\nPRESSURE:2048\nTEMP:25\nHUMIDITY:45\nRESET\n");
+      sample(f, 6410, "DOOR:CLOSED\nESTOP:OFF\nPRESSURE:1500\nTEMP:25\nHUMIDITY:45\nRESET\n");
       CHECK(f.core.getState() == EquipmentState::Idle);
       heartbeat(f, 6500, 11401);
       CHECK(sample(f, 11409).find("STATE:READY") == std::string::npos);
@@ -61,27 +129,29 @@ int main()
       heartbeat(f, 100, 5000);
       sample(f, 4999, "START\n"); safe(f.core);
       sample(f, 5000, "START\n");
-      CHECK(f.core.getState() == EquipmentState::Ready);
-      CHECK(f.core.getSequenceStep() == SequenceStep::CheckDoor);
-      safe(f.core);
-      sample(f, 5010); CHECK(f.core.getSequenceStep() == SequenceStep::PumpOn);
-      sample(f, 5020); CHECK(f.core.getDeviceState().pump_on);
+      CHECK(f.core.getState() == EquipmentState::Run);
+      CHECK(f.core.getSequenceStep() == SequenceStep::ProcessStart);
+      CHECK(!f.core.getDeviceState().pump_on && !f.core.getDeviceState().heater_on);
+      sample(f, 5010); CHECK(f.core.getSequenceStep() == SequenceStep::ProcessStart);
+      heartbeat(f, 5100, 11000);
+      sample(f, 10999); CHECK(!f.core.getDeviceState().pump_on);
+      sample(f, 11000); CHECK(f.core.getDeviceState().pump_on);
     }
     {
       Fixture f; boot(f); heartbeat(f, 100, 5001);
       sample(f, 5000, "START\n");
       for (unsigned t = 5100; t <= 5500; t += 100) sample(f, t);
       CHECK(f.core.getSequenceStep() == SequenceStep::ProcessStart);
-      CHECK(f.core.getState() == EquipmentState::Ready);
+      CHECK(f.core.getState() == EquipmentState::Run);
       sample(f, 5600);
       CHECK(f.core.getState() == EquipmentState::Run);
-      heartbeat(f, 5700, 35501);
-      sample(f, 35599);
+      heartbeat(f, 5700, 34901);
+      sample(f, 34999);
       CHECK(f.core.getState() == EquipmentState::Run);
-      CHECK(f.core.getDeviceState().pump_on && f.core.getDeviceState().heater_on);
-      CHECK(sample(f, 35600, "NOISE\n").find("STATE:IDLE") != std::string::npos);
+      CHECK(!f.core.getDeviceState().pump_on && !f.core.getDeviceState().heater_on);
+      CHECK(sample(f, 35000, "NOISE\n").find("STATE:IDLE") != std::string::npos);
       CHECK(f.core.getState() == EquipmentState::Idle); safe(f.core);
-      heartbeat(f, 35700, 40600);
+      heartbeat(f, 35100, 40600);
       CHECK(sample(f, 40599).find("STATE:READY") == std::string::npos);
       CHECK(sample(f, 40600).find("STATE:READY") == std::string::npos);
       sample(f, 40610, "DOOR:OPEN\n"); sample(f, 40620, "DOOR:CLOSED\n");
@@ -103,7 +173,7 @@ int main()
       CHECK(f.core.getState() == EquipmentState::Error);
       sample(f, 2030, "DOOR:CLOSED\nPRESSURE:0\nRESET\n");
       CHECK(f.core.getState() == EquipmentState::Error);
-      CHECK(sample(f, 2040, "PRESSURE:2048\nRESET\n").find("STATE:IDLE") != std::string::npos);
+      CHECK(sample(f, 2040, "PRESSURE:1500\nRESET\n").find("STATE:IDLE") != std::string::npos);
       CHECK(f.core.getState() == EquipmentState::Idle); safe(f.core);
       sample(f, 2050, "START\n"); CHECK(f.core.getState() == EquipmentState::Idle);
       heartbeat(f, 2100, 7100);
@@ -147,13 +217,13 @@ int main()
     {
       Fixture f; boot(f); f.at(1000); f.endpoint->drain();
       f.at(1500); f.endpoint->drain();
-      sample(f, 1510, "PRESSURE:2048\nRESET\n");
+      sample(f, 1510, "PRESSURE:1500\nRESET\n");
       CHECK(f.core.getState() == EquipmentState::Error);
       sample(f, 1520, "DOOR:CLOSED\nRESET\n");
       CHECK(f.core.getState() == EquipmentState::Error);
       sample(f, 1530, "ESTOP:OFF\nTEMP:25\nHUMIDITY:45\nRESET\n");
       CHECK(f.core.getState() == EquipmentState::Error);
-      sample(f, 1531, "DOOR:CLOSED\nESTOP:OFF\nPRESSURE:2048\nTEMP:25\nHUMIDITY:45\nRESET\n");
+      sample(f, 1531, "DOOR:CLOSED\nESTOP:OFF\nPRESSURE:1500\nTEMP:25\nHUMIDITY:45\nRESET\n");
       CHECK(f.core.getState() == EquipmentState::Idle);
       CHECK(sample(f, 1540, "ESTOP:ON\n").find("BUZZER:ON") != std::string::npos);
       CHECK(f.core.getState() == EquipmentState::Error);

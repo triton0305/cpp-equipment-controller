@@ -6,6 +6,7 @@
 #include "device_state.hpp"
 #include "equipment_state.hpp"
 #include "sensor_state.hpp"
+#include <chrono>
 
 class Logger;
 
@@ -15,8 +16,10 @@ public:
   EquipmentController();
 
   void handleCommand(const Command& command);
-  // Runtime supplies completion only after its non-blocking RUN deadline.
-  void update(bool process_complete = true);
+  // Runtime supplies elapsed time since an accepted START, using its injected clock.
+  static constexpr auto ProcessStageInterval = std::chrono::seconds(6);
+  static constexpr auto ProcessDuration = 5 * ProcessStageInterval;
+  void update(std::chrono::milliseconds process_elapsed = std::chrono::milliseconds::zero());
 
   // These paths never advance the process. Observe exactly once per received measurement.
   void checkSafety();
@@ -38,7 +41,8 @@ private:
   void handleStart();
   void handleStop();
   void handleReset();
-  void advanceSequence(bool process_complete);
+  void advanceSequence(std::chrono::milliseconds elapsed);
+  void logProcess(const char* event);
   void checkInterlocks();
   void enterError(AlarmCode alarm_code);
 

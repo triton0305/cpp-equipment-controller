@@ -9,6 +9,8 @@ enum class EquipmentState
   Error
 };
 
+// Retain legacy step numbers for STATUS consumers. CheckDoor, CheckPressure,
+// CheckTemperature and ProcessRunning are no longer used for timed progression.
 enum class SequenceStep
 {
   None,
@@ -20,7 +22,9 @@ enum class SequenceStep
   ProcessStart,
   ProcessRunning,
   ProcessComplete,
-  Shutdown
+  Shutdown,
+  HeaterOff,
+  PumpOff
 };
 
 #endif

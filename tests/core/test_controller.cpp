@@ -60,7 +60,7 @@ int main()
 
   for (int i = 0; i < 9; ++i)
   {
-    controller.update();
+    controller.update(std::chrono::seconds(i * 6));
 
     const DeviceState& device = controller.getDeviceState();
 
@@ -86,7 +86,7 @@ int main()
 
   for (int i = 0; i < 6; ++i)
   {
-    fault_controller.update();
+    fault_controller.update(std::chrono::seconds(12));
   }
 
   std::cout
@@ -99,7 +99,7 @@ int main()
   fault_sensor.door_closed = false;
 
   fault_controller.setSensorState(fault_sensor);
-  fault_controller.update();
+  fault_controller.update(std::chrono::seconds(12));
 
   const DeviceState& fault_device =
     fault_controller.getDeviceState();
@@ -126,8 +126,8 @@ int main()
 
   pressure_controller.handleCommand(start_command);
 
-  pressure_controller.update();
-  pressure_controller.update();
+  pressure_controller.update(std::chrono::seconds(6));
+  pressure_controller.update(std::chrono::seconds(6));
 
   const DeviceState& pressure_device_before =
     pressure_controller.getDeviceState();
@@ -146,7 +146,7 @@ int main()
   pressure_controller.setSensorState(pressure_sensor);
   pressure_controller.observeMeasurement(SensorKind::Pressure);
   pressure_controller.observeMeasurement(SensorKind::Pressure);
-  pressure_controller.update();
+  pressure_controller.update(std::chrono::seconds(6));
 
   const DeviceState& pressure_device_after =
     pressure_controller.getDeviceState();
@@ -176,7 +176,7 @@ int main()
 
   for (int i = 0; i < 4; ++i)
   {
-    temperature_controller.update();
+    temperature_controller.update(std::chrono::seconds(12));
   }
 
   const DeviceState& temperature_device_before =
@@ -197,7 +197,7 @@ int main()
   temperature_controller.setSensorState(temperature_sensor);
   temperature_controller.observeMeasurement(SensorKind::Temperature);
   temperature_controller.observeMeasurement(SensorKind::Temperature);
-  temperature_controller.update();
+  temperature_controller.update(std::chrono::seconds(12));
 
   const DeviceState& temperature_device_after =
     temperature_controller.getDeviceState();
@@ -227,7 +227,7 @@ int main()
 
   for (int i = 0; i < 6; ++i)
   {
-    motor_controller.update();
+    motor_controller.update(std::chrono::seconds(12));
   }
 
   std::cout
@@ -241,7 +241,7 @@ int main()
   motor_sensor.motor_fault = true;
 
   motor_controller.setSensorState(motor_sensor);
-  motor_controller.update();
+  motor_controller.update(std::chrono::seconds(12));
 
   const DeviceState& motor_device =
     motor_controller.getDeviceState();
@@ -271,7 +271,7 @@ int main()
 
   for (int i = 0; i < 6; ++i)
   {
-    estop_controller.update();
+    estop_controller.update(std::chrono::seconds(12));
   }
 
   std::cout
@@ -286,7 +286,7 @@ int main()
   estop_sensor.emergency_stop = true;
 
   estop_controller.setSensorState(estop_sensor);
-  estop_controller.update();
+  estop_controller.update(std::chrono::seconds(12));
 
   const DeviceState& estop_device =
     estop_controller.getDeviceState();
@@ -317,7 +317,7 @@ int main()
 
   for (int i = 0; i < 6; ++i)
   {
-    communication_controller.update();
+    communication_controller.update(std::chrono::seconds(12));
   }
 
   std::cout
@@ -332,7 +332,7 @@ int main()
   communication_sensor.communication_ok = false;
 
   communication_controller.setSensorState(communication_sensor);
-  communication_controller.update();
+  communication_controller.update(std::chrono::seconds(12));
 
   const DeviceState& communication_device =
     communication_controller.getDeviceState();
@@ -363,14 +363,14 @@ int main()
 
   for (int i = 0; i < 6; ++i)
   {
-    reset_controller.update();
+    reset_controller.update(std::chrono::seconds(12));
   }
 
   SensorState reset_sensor = normalSensors();
   reset_sensor.emergency_stop = true;
 
   reset_controller.setSensorState(reset_sensor);
-  reset_controller.update();
+  reset_controller.update(std::chrono::seconds(12));
 
   Command reset_command;
   reset_command.type = CommandType::Reset;
@@ -417,7 +417,7 @@ int main()
 
   for (int i = 0; i < 6; ++i)
   {
-    stop_controller.update();
+    stop_controller.update(std::chrono::seconds(12));
   }
 
   const DeviceState& stop_before =
@@ -478,7 +478,7 @@ int main()
   // RUN 진입
   for (int i = 0; i < 6; ++i)
   {
-    logging_controller.update();
+    logging_controller.update(std::chrono::seconds(12));
   }
 
   // STOP 이벤트
@@ -492,7 +492,7 @@ int main()
 
   for (int i = 0; i < 6; ++i)
   {
-    logging_controller.update();
+    logging_controller.update(std::chrono::seconds(12));
   }
 
   // Emergency Stop 발생
@@ -500,7 +500,7 @@ int main()
   logging_sensor.emergency_stop = true;
 
   logging_controller.setSensorState(logging_sensor);
-  logging_controller.update();
+  logging_controller.update(std::chrono::seconds(12));
 
   // Fault 해제 후 RESET
   logging_sensor.emergency_stop = false;
@@ -530,7 +530,7 @@ int main()
     << " | alarm=" << static_cast<int>(idle_stop_controller.getAlarmCode())
     << '\n';
 
-  // READY + STOP -> IDLE 전환
+  // START + STOP -> IDLE 전환
   EquipmentController ready_stop_controller;
   ready_stop_controller.setSensorState(normalSensors());
 
@@ -538,7 +538,7 @@ int main()
   ready_stop_controller.handleCommand(boundary_stop_command);
 
   std::cout
-    << "READY + STOP"
+    << "START + STOP"
     << " | state=" << static_cast<int>(ready_stop_controller.getState())
     << " | step=" << static_cast<int>(ready_stop_controller.getSequenceStep())
     << " | alarm=" << static_cast<int>(ready_stop_controller.getAlarmCode())
@@ -552,14 +552,14 @@ int main()
 
   for (int i = 0; i < 6; ++i)
   {
-    error_stop_controller.update();
+    error_stop_controller.update(std::chrono::seconds(12));
   }
 
   SensorState error_stop_sensor = normalSensors();
   error_stop_sensor.emergency_stop = true;
 
   error_stop_controller.setSensorState(error_stop_sensor);
-  error_stop_controller.update();
+  error_stop_controller.update(std::chrono::seconds(12));
 
   error_stop_controller.handleCommand(boundary_stop_command);
 
@@ -593,7 +593,7 @@ int main()
 
   for (int i = 0; i < 6; ++i)
   {
-    run_reset_controller.update();
+    run_reset_controller.update(std::chrono::seconds(12));
   }
 
   run_reset_controller.handleCommand(boundary_reset_command);
@@ -613,20 +613,20 @@ int main()
 
   for (int i = 0; i < 6; ++i)
   {
-    reset_update_controller.update();
+    reset_update_controller.update(std::chrono::seconds(12));
   }
 
   SensorState reset_update_sensor = normalSensors();
   reset_update_sensor.emergency_stop = true;
 
   reset_update_controller.setSensorState(reset_update_sensor);
-  reset_update_controller.update();
+  reset_update_controller.update(std::chrono::seconds(12));
 
   reset_update_sensor.emergency_stop = false;
   reset_update_controller.setSensorState(reset_update_sensor);
 
   reset_update_controller.handleCommand(boundary_reset_command);
-  reset_update_controller.update();
+  reset_update_controller.update(std::chrono::seconds(12));
 
   const DeviceState& reset_update_device =
     reset_update_controller.getDeviceState();
@@ -658,7 +658,7 @@ int main()
 
   for (int i = 0; i < 6; ++i)
   {
-    repeated_fault_controller.update();
+    repeated_fault_controller.update(std::chrono::seconds(12));
   }
 
   SensorState repeated_fault_sensor = normalSensors();
@@ -666,9 +666,9 @@ int main()
 
   repeated_fault_controller.setSensorState(repeated_fault_sensor);
 
-  repeated_fault_controller.update();
-  repeated_fault_controller.update();
-  repeated_fault_controller.update();
+  repeated_fault_controller.update(std::chrono::seconds(12));
+  repeated_fault_controller.update(std::chrono::seconds(12));
+  repeated_fault_controller.update(std::chrono::seconds(12));
 
   const DeviceState& repeated_fault_device =
     repeated_fault_controller.getDeviceState();

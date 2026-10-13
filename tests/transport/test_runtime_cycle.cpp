@@ -1,7 +1,7 @@
 #include "runtime_fixture.hpp"
 #include <sstream>
 
-static const std::string normal = "DOOR:CLOSED\nESTOP:OFF\nPRESSURE:2048\nTEMP:25.0\nHUMIDITY:45.0\n";
+static const std::string normal = "DOOR:CLOSED\nESTOP:OFF\nPRESSURE:1500\nTEMP:25.0\nHUMIDITY:45.0\n";
 static std::string sample(Fixture& f, unsigned ms, const std::string& data = normal)
 {
   f.now = ControllerRuntime::Clock::time_point{} + std::chrono::milliseconds(ms);
@@ -23,21 +23,151 @@ static void qualify(Fixture& f)
 static unsigned startRun(Fixture& f)
 {
   qualify(f);
-  sample(f, 5001, "Start\n"); CHECK(f.core.getSequenceStep() == SequenceStep::CheckDoor); safe(f.core);
-  const SequenceStep steps[] = {SequenceStep::PumpOn, SequenceStep::CheckPressure,
-    SequenceStep::HeaterOn, SequenceStep::CheckTemperature, SequenceStep::ProcessStart, SequenceStep::ProcessRunning};
-  for (unsigned i = 0; i < 6; ++i)
-  {
-    // Many valid sensor lines still perform exactly one sequence transition.
-    const auto packet = sample(f, 5010 + 10 * i, normal + normal + normal);
-    CHECK(f.core.getSequenceStep() == steps[i]);
-    CHECK(f.core.getDeviceState().pump_on);
-    CHECK(f.core.getDeviceState().heater_on == (i >= 2));
-    if (i < 5) CHECK(f.core.getState() == EquipmentState::Ready);
-    else CHECK(packet.find("STATE:RUN") != std::string::npos);
-  }
+  sample(f, 5001, "Start\n");
   CHECK(f.core.getState() == EquipmentState::Run);
-  return 5060;
+  CHECK(f.core.getSequenceStep() == SequenceStep::ProcessStart);
+  CHECK(!f.core.getDeviceState().pump_on && !f.core.getDeviceState().heater_on);
+  sample(f, 5060, normal + normal + normal);
+  CHECK(f.core.getSequenceStep() == SequenceStep::ProcessStart);
+  return 5001;
+}
+
+struct CaptureEvents
+{
+  std::ostringstream events;
+  std::streambuf* previous = std::cerr.rdbuf(events.rdbuf());
+  ~CaptureEvents() { std::cerr.rdbuf(previous); }
+};
+
+static void timeline()
+{
+  CaptureEvents capture;
+  Fixture f;
+  const auto start = startRun(f);
+  unsigned last = 5060;
+  const unsigned boundaries[] = {100, 3000, 5999, 6000, 6001, 11999, 12000, 12001,
+    17999, 18000, 18001, 23999, 24000, 24001, 29999, 30000, 30001};
+  for (const auto elapsed : boundaries)
+  {
+    keepAlive(f, last + 100, start + elapsed);
+    // Rejected START / RESET traffic cannot defer a timed transition.
+    const auto packet = sample(f, start + elapsed, normal + "START\nRESET\n");
+    const auto& d = f.core.getDeviceState();
+    CHECK(d.pump_on == (elapsed >= 6000 && elapsed < 24000));
+    CHECK(d.heater_on == (elapsed >= 12000 && elapsed < 18000));
+    CHECK(packet.find(d.pump_on ? "PUMP:ON" : "PUMP:OFF") != std::string::npos);
+    CHECK(packet.find(d.heater_on ? "HEATER:ON" : "HEATER:OFF") != std::string::npos);
+    CHECK(f.core.getState() == (elapsed < 30000 ? EquipmentState::Run : EquipmentState::Idle));
+    CHECK(d.run_led == (elapsed < 30000));
+    if (elapsed == 30000) CHECK(f.core.getSequenceStep() == SequenceStep::ProcessComplete);
+    last = start + elapsed;
+  }
+  std::size_t event_end = 0;
+  for (const auto* event : {"PROCESS START", "PROCESS PUMP ON", "PROCESS HEATER ON",
+      "PROCESS HEATER OFF", "PROCESS PUMP OFF", "PROCESS COMPLETE"})
+  {
+    const auto pos = capture.events.str().find(event, event_end);
+    CHECK(pos != std::string::npos);
+    CHECK(capture.events.str().find(event, pos + 1) == std::string::npos);
+    event_end = pos + std::string(event).size();
+  }
+  sample(f, 35010); sample(f, 35020);
+  CHECK(f.core.getSequenceStep() == SequenceStep::None);
+  keepAlive(f, 35100, 45000);
+  CHECK(sample(f, 45010).find("STATE:READY") == std::string::npos);
+  sample(f, 45020, "START\n"); CHECK(f.core.getState() == EquipmentState::Idle);
+  sample(f, 45030, "DOOR:OPEN\n");
+  sample(f, 45040, "DOOR:CLOSED\n"); keepAlive(f, 45100, 50000);
+  CHECK(sample(f, 50039).find("STATE:READY") == std::string::npos);
+  CHECK(sample(f, 50040).find("STATE:READY") != std::string::npos);
+  sample(f, 50050, "START\n"); CHECK(f.core.getSequenceStep() == SequenceStep::ProcessStart);
+  CHECK(!f.core.getDeviceState().pump_on && !f.core.getDeviceState().heater_on);
+  sample(f, 50060, "STOP\n"); CHECK(f.core.getState() == EquipmentState::Idle); safe(f.core);
+}
+
+static void faultsInEveryStage()
+{
+  const struct { const char* data; AlarmCode alarm; } faults[] = {
+    {"DOOR:OPEN\n", AlarmCode::DoorOpen}, {"ESTOP:ON\n", AlarmCode::EmergencyStop},
+    {"TEMP:50\nTEMP:50\n", AlarmCode::TemperatureCritical},
+    {nullptr, AlarmCode::CommunicationFault}
+  };
+  for (unsigned stage = 0; stage < 5; ++stage)
+  for (const auto& fault : faults)
+  {
+    Fixture f; const auto start = startRun(f);
+    const auto at = start + stage * 6000 + 1500;
+    keepAlive(f, 5100, at - 1000); sample(f, at - 1000);
+    CHECK(f.core.getDeviceState().pump_on == (stage >= 1 && stage <= 3));
+    CHECK(f.core.getDeviceState().heater_on == (stage == 2));
+    std::string packet;
+    if (fault.data)
+    {
+      keepAlive(f, at - 900, at - 100);
+      packet = sample(f, at, fault.data);
+    }
+    else { f.at(at); packet = f.endpoint->drain(); }
+    CHECK(f.core.getState() == EquipmentState::Error);
+    CHECK(f.core.getAlarmCode() == fault.alarm); safe(f.core);
+    CHECK(packet.find("PUMP:OFF") != std::string::npos);
+    CHECK(packet.find("HEATER:OFF") != std::string::npos);
+    CHECK(packet.find("RUN_LED:OFF") != std::string::npos);
+  }
+}
+
+static void tickAndValidity()
+{
+  Fixture f; const auto start = startRun(f);
+  unsigned last = 5060;
+  for (unsigned elapsed = 6000; elapsed <= 30000; elapsed += 6000)
+  {
+    keepAlive(f, last + 100, start + elapsed - 100);
+    sample(f, start + elapsed - 1);
+    // No received data or command is needed to advance a deadline.
+    f.at(start + elapsed);
+    const auto packet = f.endpoint->drain();
+    CHECK(f.core.getDeviceState().pump_on == (elapsed < 24000));
+    CHECK(f.core.getDeviceState().heater_on == (elapsed == 12000));
+    CHECK(!packet.empty());
+    last = start + elapsed;
+  }
+  safe(f.core); CHECK(f.core.getState() == EquipmentState::Idle);
+
+  Fixture missing; const auto accepted = startRun(missing);
+  // Existing validity policy: individual stale/invalid readings invalidate the
+  // measurement and break critical streaks; GPIO traffic keeps the link alive.
+  // These flags are not new pressure/temperature progression targets.
+  keepAlive(missing, 5100, accepted + 12100, "DOOR:CLOSED\nESTOP:OFF\n");
+  CHECK(!missing.core.getSensorState().pressure_valid);
+  CHECK(!missing.core.getSensorState().temperature_valid);
+  CHECK(!missing.core.getSensorState().humidity_valid);
+  CHECK(missing.core.getDeviceState().pump_on && missing.core.getDeviceState().heater_on);
+  sample(missing, accepted + 12200, "TEMP:INVALID\nPRESSURE:INVALID\n");
+  CHECK(missing.core.getState() == EquipmentState::Run);
+  sample(missing, accepted + 12300, "TEMP:50\n");
+  CHECK(missing.core.getState() == EquipmentState::Run);
+  sample(missing, accepted + 12400, "TEMP:50\n");
+  CHECK(missing.core.getAlarmCode() == AlarmCode::TemperatureCritical); safe(missing.core);
+}
+
+static void delayedTickAndRestart()
+{
+  Fixture f; const auto start = startRun(f);
+  keepAlive(f, 5100, start + 5900);
+  sample(f, start + 6017);
+  CHECK(f.core.getDeviceState().pump_on && !f.core.getDeviceState().heater_on);
+  keepAlive(f, start + 6100, start + 11900);
+  sample(f, start + 12000);
+  CHECK(f.core.getDeviceState().heater_on); // No accumulated 17ms drift.
+  sample(f, start + 12001, "STOP\n"); safe(f.core);
+  sample(f, start + 12002);
+  keepAlive(f, start + 12100, start + 17000);
+  sample(f, start + 17002, "START\n");
+  CHECK(f.core.getSequenceStep() == SequenceStep::ProcessStart);
+  CHECK(!f.core.getDeviceState().pump_on && !f.core.getDeviceState().heater_on);
+  keepAlive(f, start + 17100, start + 22900);
+  sample(f, start + 23001); CHECK(!f.core.getDeviceState().pump_on);
+  sample(f, start + 23002); CHECK(f.core.getDeviceState().pump_on);
 }
 
 int main()
@@ -48,51 +178,10 @@ int main()
     for (auto text : {"STOP", "Stop", "stop"}) CHECK(parseCommand(text).type == CommandType::Stop);
     for (auto text : {"RESET", "Reset", "reset"}) CHECK(parseCommand(text).type == CommandType::Reset);
     CHECK(parseCommand("START NOW").type == CommandType::Invalid);
-    {
-      Fixture f; qualify(f);
-      sample(f, 5001, "start\n" + normal + normal);
-      CHECK(f.core.getSequenceStep() == SequenceStep::CheckDoor); safe(f.core);
-      sample(f, 5010); CHECK(f.core.getSequenceStep() == SequenceStep::PumpOn);
-      CHECK(f.core.getDeviceState().pump_on && !f.core.getDeviceState().heater_on);
-      sample(f, 5020, "PRESSURE:200\n");
-      CHECK(f.core.getSequenceStep() == SequenceStep::CheckPressure);
-      sample(f, 5030, "DOOR:CLOSED\n");
-      CHECK(f.core.getSequenceStep() == SequenceStep::CheckPressure);
-      CHECK(!f.core.getDeviceState().heater_on);
-      sample(f, 5040, "PRESSURE:INVALID\n");
-      // No pressure or temperature measurement for >5s; safety GPIOs stay fresh.
-      keepAlive(f, 5100, 10400, "DOOR:CLOSED\nESTOP:OFF\n");
-      CHECK(!f.core.getSensorState().pressure_valid && !f.core.getSensorState().temperature_valid);
-      CHECK(f.core.getSequenceStep() == SequenceStep::CheckPressure);
-      sample(f, 10500, "PRESSURE:2048\n");
-      CHECK(f.core.getSequenceStep() == SequenceStep::HeaterOn && f.core.getDeviceState().heater_on);
-      sample(f, 10510, "DOOR:CLOSED\n"); CHECK(f.core.getSequenceStep() == SequenceStep::CheckTemperature);
-      sample(f, 10520, "TEMP:INVALID\n"); CHECK(f.core.getSequenceStep() == SequenceStep::CheckTemperature);
-      sample(f, 10530, "TEMP:50.0\n"); CHECK(f.core.getSequenceStep() == SequenceStep::CheckTemperature);
-      CHECK(f.core.getState() != EquipmentState::Error);
-      sample(f, 10540, "TEMP:25.0\n"); CHECK(f.core.getSequenceStep() == SequenceStep::ProcessStart);
-      sample(f, 10550, "TEMP:INVALID\n"); CHECK(f.core.getSequenceStep() == SequenceStep::CheckTemperature);
-      sample(f, 10560); CHECK(f.core.getSequenceStep() == SequenceStep::ProcessStart);
-      sample(f, 10570); CHECK(f.core.getState() == EquipmentState::Run);
-      keepAlive(f, 10670, 40470);
-      sample(f, 40569); CHECK(f.core.getState() == EquipmentState::Run);
-      const auto ended = sample(f, 40570, "start\n"); // Ignored command cannot delay RUN timeout.
-      CHECK(f.core.getState() == EquipmentState::Idle); safe(f.core);
-      CHECK(ended.find("STATE:IDLE") != std::string::npos);
-      CHECK(f.core.getSequenceStep() == SequenceStep::ProcessComplete);
-      sample(f, 40580); CHECK(f.core.getSequenceStep() == SequenceStep::Shutdown);
-      sample(f, 40590); CHECK(f.core.getSequenceStep() == SequenceStep::None);
-      keepAlive(f, 40600, 50600);
-      CHECK(sample(f, 50610).find("STATE:READY") == std::string::npos);
-      sample(f, 50620, "START\n"); CHECK(f.core.getState() == EquipmentState::Idle);
-      CHECK(sample(f, 50630, "DOOR:OPEN\n").find("STATE:IDLE") != std::string::npos);
-      sample(f, 50640, "DOOR:CLOSED\n"); keepAlive(f, 50700, 55600);
-      CHECK(sample(f, 55639).find("STATE:READY") == std::string::npos);
-      CHECK(sample(f, 55640).find("STATE:READY") != std::string::npos);
-      CHECK(f.core.getState() == EquipmentState::Idle); safe(f.core);
-      sample(f, 55650, "start\n"); CHECK(f.core.getSequenceStep() == SequenceStep::CheckDoor);
-      sample(f, 55660, "Stop\n"); CHECK(f.core.getState() == EquipmentState::Idle); safe(f.core);
-    }
+    timeline();
+    faultsInEveryStage();
+    tickAndValidity();
+    delayedTickAndRestart();
     {
       Fixture f; startRun(f);
       sample(f, 5070, "TEMP:5.1\nTEMP:5.1\nHUMIDITY:15.1\nHUMIDITY:15.1\nPRESSURE:201\nPRESSURE:201\n");
@@ -148,7 +237,7 @@ int main()
       Fixture f; startRun(f);
       const auto critical = key == "TEMP:" ? "50" : key == "HUMIDITY:" ? "90" : "3900";
       const unsigned expiry = key == "PRESSURE:" ? 1000 : 5000;
-      const std::string other = key == "PRESSURE:" ? "DOOR:CLOSED\nESTOP:OFF\n" : "DOOR:CLOSED\nESTOP:OFF\nPRESSURE:2048\n";
+      const std::string other = key == "PRESSURE:" ? "DOOR:CLOSED\nESTOP:OFF\n" : "DOOR:CLOSED\nESTOP:OFF\nPRESSURE:1500\n";
       sample(f, 5070, key + critical + "\n");
       keepAlive(f, 5170, 5070 + expiry, other);
       sample(f, 5080 + expiry, key + critical + "\n");

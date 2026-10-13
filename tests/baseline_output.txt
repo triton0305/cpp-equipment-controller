@@ -5,48 +5,70 @@ State: 0
 Sequence step: 0
 
 [TEST 2] Normal sequence
-After START state: 1
-Sequence step: 1
-Update 1 | state=1 | step=2 | pump=1 | heater=0 | run_led=0
-Update 2 | state=1 | step=3 | pump=1 | heater=0 | run_led=0
-Update 3 | state=1 | step=4 | pump=1 | heater=1 | run_led=0
-Update 4 | state=1 | step=5 | pump=1 | heater=1 | run_led=0
-Update 5 | state=1 | step=6 | pump=1 | heater=1 | run_led=0
-Update 6 | state=2 | step=7 | pump=1 | heater=1 | run_led=1
-Update 7 | state=0 | step=8 | pump=0 | heater=0 | run_led=0
-Update 8 | state=0 | step=9 | pump=0 | heater=0 | run_led=0
+PROCESS START
+After START state: 2
+Sequence step: 6
+Update 1 | state=2 | step=6 | pump=0 | heater=0 | run_led=1
+PROCESS PUMP ON
+Update 2 | state=2 | step=2 | pump=1 | heater=0 | run_led=1
+PROCESS HEATER ON
+Update 3 | state=2 | step=4 | pump=1 | heater=1 | run_led=1
+PROCESS HEATER OFF
+Update 4 | state=2 | step=10 | pump=1 | heater=0 | run_led=1
+PROCESS PUMP OFF
+Update 5 | state=2 | step=11 | pump=0 | heater=0 | run_led=1
+PROCESS COMPLETE
+Update 6 | state=0 | step=8 | pump=0 | heater=0 | run_led=0
+Update 7 | state=0 | step=9 | pump=0 | heater=0 | run_led=0
+Update 8 | state=0 | step=0 | pump=0 | heater=0 | run_led=0
 Update 9 | state=0 | step=0 | pump=0 | heater=0 | run_led=0
 
 [TEST 3] Door open during RUN
-Before fault | state=2 | step=7
+PROCESS START
+PROCESS HEATER ON
+Before fault | state=2 | step=4
 After fault | state=3 | step=0 | alarm=1 | pump=0 | heater=0 | run_led=0 | error_led=1 | buzzer=1
 
 [TEST 4] Pressure fault
-Before fault | state=1 | step=3 | pressure=2048 | pump=1
+PROCESS START
+PROCESS PUMP ON
+Before fault | state=2 | step=2 | pressure=2048 | pump=1
 After fault | state=3 | step=0 | alarm=9 | pressure=40 | pump=0 | heater=0 | run_led=0 | error_led=1 | buzzer=1
 
 [TEST 5] Over temperature
-Before fault | state=1 | step=5 | temperature=25 | pump=1 | heater=1
+PROCESS START
+PROCESS HEATER ON
+Before fault | state=2 | step=4 | temperature=25 | pump=1 | heater=1
 After fault | state=3 | step=0 | alarm=7 | temperature=90 | pump=0 | heater=0 | run_led=0 | error_led=1 | buzzer=1
 
 [TEST 6] Motor fault during RUN
-Before fault | state=2 | step=7 | motor_fault=0
+PROCESS START
+PROCESS HEATER ON
+Before fault | state=2 | step=4 | motor_fault=0
 After fault | state=3 | step=0 | alarm=4 | motor_fault=1 | pump=0 | heater=0 | run_led=0 | error_led=1 | buzzer=1
 
 [TEST 7] Emergency stop during RUN
-Before fault | state=2 | step=7 | emergency_stop=0
+PROCESS START
+PROCESS HEATER ON
+Before fault | state=2 | step=4 | emergency_stop=0
 After fault | state=3 | step=0 | alarm=5 | emergency_stop=1 | pump=0 | heater=0 | run_led=0 | error_led=1 | buzzer=1
 
 [TEST 8] Communication fault during RUN
-Before fault | state=2 | step=7 | communication_ok=1
+PROCESS START
+PROCESS HEATER ON
+Before fault | state=2 | step=4 | communication_ok=1
 After fault | state=3 | step=0 | alarm=6 | communication_ok=0 | pump=0 | heater=0 | run_led=0 | error_led=1 | buzzer=1
 
 [TEST 9] RESET / Recovery
+PROCESS START
+PROCESS HEATER ON
 RESET with fault | state=3 | alarm=5
 RESET after recovery | state=0 | step=0 | alarm=0 | pump=0 | heater=0 | run_led=0 | error_led=0 | buzzer=0
 
 [TEST 10] STOP during RUN
-Before STOP | state=2 | step=7 | pump=1 | heater=1
+PROCESS START
+PROCESS HEATER ON
+Before STOP | state=2 | step=4 | pump=1 | heater=1
 After STOP | state=0 | step=0 | alarm=0 | pump=0 | heater=0 | valve=0 | run_led=0 | error_led=0 | buzzer=0
 
 [TEST 11] Logger
@@ -55,23 +77,36 @@ After STOP | state=0 | step=0 | alarm=0 | pump=0 | heater=0 | valve=0 | run_led=
 [2026-10-08 16:43:05] [ERROR] Error test
 
 [TEST 12] Controller Event Logging
-[2026-10-08 16:43:05] [INFO] START accepted: IDLE -> READY
+[2026-10-08 16:43:05] [INFO] START accepted: IDLE -> RUN
+[2026-10-08 16:43:05] [INFO] PROCESS START
+[2026-10-08 16:43:05] [INFO] PROCESS HEATER ON
 [2026-10-08 16:43:05] [INFO] STOP accepted: -> IDLE
-[2026-10-08 16:43:05] [INFO] START accepted: IDLE -> READY
+[2026-10-08 16:43:05] [INFO] START accepted: IDLE -> RUN
+[2026-10-08 16:43:05] [INFO] PROCESS START
+[2026-10-08 16:43:05] [INFO] PROCESS HEATER ON
 [2026-10-08 16:43:05] [ERROR] FAULT detected: alarm=5
 [2026-10-08 16:43:05] [INFO] RESET accepted: ERROR -> IDLE
 
 [TEST 13] STOP boundary conditions
 IDLE + STOP | state=0 | step=0 | alarm=0
-READY + STOP | state=0 | step=0 | alarm=0
+PROCESS START
+START + STOP | state=0 | step=0 | alarm=0
+PROCESS START
+PROCESS HEATER ON
 ERROR + STOP | state=3 | step=0 | alarm=5 | pump=0 | heater=0 | run_led=0 | error_led=1 | buzzer=1
 
 [TEST 14] RESET boundary conditions
-RUN + RESET | state=2 | step=7 | alarm=0
+PROCESS START
+PROCESS HEATER ON
+RUN + RESET | state=2 | step=4 | alarm=0
+PROCESS START
+PROCESS HEATER ON
 RESET + update | state=0 | step=0 | alarm=0 | pump=0 | heater=0 | run_led=0 | error_led=0 | buzzer=0
 
 [TEST 15] Repeated fault stability
-[2026-10-08 16:43:05] [INFO] START accepted: IDLE -> READY
+[2026-10-08 16:43:05] [INFO] START accepted: IDLE -> RUN
+[2026-10-08 16:43:05] [INFO] PROCESS START
+[2026-10-08 16:43:05] [INFO] PROCESS HEATER ON
 [2026-10-08 16:43:05] [ERROR] FAULT detected: alarm=5
 Repeated fault | state=3 | step=0 | alarm=5 | pump=0 | heater=0 | run_led=0 | error_led=1 | buzzer=1
 

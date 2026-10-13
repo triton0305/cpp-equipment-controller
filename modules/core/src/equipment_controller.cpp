@@ -3,6 +3,7 @@
 
 #include <string>
 #include <cmath>
+#include <iostream>
 
 namespace
 {
@@ -44,7 +45,7 @@ void EquipmentController::handleCommand(const Command& command)
   }
 }
 
-void EquipmentController::update(bool process_complete)
+void EquipmentController::update(std::chrono::milliseconds process_elapsed)
 {
   checkInterlocks();
 
@@ -53,7 +54,7 @@ void EquipmentController::update(bool process_complete)
     return;
   }
 
-  advanceSequence(process_complete);
+  advanceSequence(process_elapsed);
 }
 
 void EquipmentController::setLogger(Logger* logger)
@@ -149,13 +150,15 @@ void EquipmentController::handleStart()
   }
 
   clearCritical();
-  state_ = EquipmentState::Ready;
-  sequence_step_ = SequenceStep::CheckDoor;
+  state_ = EquipmentState::Run;
+  sequence_step_ = SequenceStep::ProcessStart;
+  device_state_.run_led = true;
 
   if (logger_)
   {
-    logger_->log(LogLevel::Info, "START accepted: IDLE -> READY");
+    logger_->log(LogLevel::Info, "START accepted: IDLE -> RUN");
   }
+  logProcess("PROCESS START");
 }
 
 void EquipmentController::handleStop()
@@ -219,66 +222,51 @@ void EquipmentController::handleReset()
   }
 }
 
-void EquipmentController::advanceSequence(bool process_complete)
+void EquipmentController::logProcess(const char* event)
 {
-  switch (sequence_step_)
+  if (logger_) logger_->log(LogLevel::Info, event);
+  else std::cerr << event << '\n';
+}
+
+void EquipmentController::advanceSequence(std::chrono::milliseconds elapsed)
+{
+  // Completion bookkeeping remains outside the active process timeline.
+  if (sequence_step_ == SequenceStep::ProcessComplete)
   {
-    case SequenceStep::None:
-      break;
+    sequence_step_ = SequenceStep::Shutdown;
+    return;
+  }
+  if (sequence_step_ == SequenceStep::Shutdown)
+  {
+    sequence_step_ = SequenceStep::None;
+    return;
+  }
+  if (state_ != EquipmentState::Run) return;
 
-    case SequenceStep::CheckDoor:
-      device_state_.pump_on = true;
-      sequence_step_ = SequenceStep::PumpOn;
-      break;
-
-    case SequenceStep::PumpOn:
-      sequence_step_ = SequenceStep::CheckPressure;
-      break;
-
-    case SequenceStep::CheckPressure:
-      if (!pressureSafe(sensor_state_)) break;
-      device_state_.heater_on = true;
-      sequence_step_ = SequenceStep::HeaterOn;
-      break;
-
-    case SequenceStep::HeaterOn:
-      sequence_step_ = SequenceStep::CheckTemperature;
-      break;
-
-    case SequenceStep::CheckTemperature:
-      if (!temperatureSafe(sensor_state_)) break;
-      sequence_step_ = SequenceStep::ProcessStart;
-      break;
-
-    case SequenceStep::ProcessStart:
-      if (!temperatureSafe(sensor_state_)) { sequence_step_ = SequenceStep::CheckTemperature; break; }
-      state_ = EquipmentState::Run;
-      device_state_.run_led = true;
-      sequence_step_ = SequenceStep::ProcessRunning;
-      break;
-
-    case SequenceStep::ProcessRunning:
-      if (!process_complete) break;
-      // Stop at the deadline; finish bookkeeping one step per later update.
-      device_state_.pump_on = device_state_.heater_on = false;
+  // Select the current interval directly: a delayed tick must never briefly
+  // energize an actuator for a stage whose deadline has already passed.
+  const auto next = elapsed >= ProcessDuration ? SequenceStep::ProcessComplete
+      : elapsed >= 4 * ProcessStageInterval ? SequenceStep::PumpOff
+      : elapsed >= 3 * ProcessStageInterval ? SequenceStep::HeaterOff
+      : elapsed >= 2 * ProcessStageInterval ? SequenceStep::HeaterOn
+      : elapsed >= ProcessStageInterval ? SequenceStep::PumpOn
+      : SequenceStep::ProcessStart;
+  if (next == sequence_step_) return;
+  sequence_step_ = next;
+  device_state_.pump_on = elapsed >= ProcessStageInterval && elapsed < 4 * ProcessStageInterval;
+  device_state_.heater_on = elapsed >= 2 * ProcessStageInterval && elapsed < 3 * ProcessStageInterval;
+  switch (next)
+  {
+    case SequenceStep::PumpOn: logProcess("PROCESS PUMP ON"); break;
+    case SequenceStep::HeaterOn: logProcess("PROCESS HEATER ON"); break;
+    case SequenceStep::HeaterOff: logProcess("PROCESS HEATER OFF"); break;
+    case SequenceStep::PumpOff: logProcess("PROCESS PUMP OFF"); break;
+    case SequenceStep::ProcessComplete:
       device_state_.valve_open = device_state_.run_led = false;
       state_ = EquipmentState::Idle;
-      sequence_step_ = SequenceStep::ProcessComplete;
+      logProcess("PROCESS COMPLETE");
       break;
-
-    case SequenceStep::ProcessComplete:
-      sequence_step_ = SequenceStep::Shutdown;
-      break;
-
-    case SequenceStep::Shutdown:
-      device_state_.pump_on = false;
-      device_state_.heater_on = false;
-      device_state_.valve_open = false;
-      device_state_.run_led = false;
-
-      state_ = EquipmentState::Idle;
-      sequence_step_ = SequenceStep::None;
-      break;
+    default: break;
   }
 }
 
