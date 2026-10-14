@@ -77,11 +77,17 @@ Pump / Heater는 LED 출력으로 확인했습니다. CLI snapshot은 Runtime이
 
 ### Emergency Stop (E-Stop)
 
-<img width="654" height="368" alt="ESTOP_gif" src="https://github.com/user-attachments/assets/96ff2790-0de0-4c6e-863c-d00efaf9061c" />
+<img width="640" height="476" alt="ESTOP_gif" src="https://github.com/user-attachments/assets/f82d3378-3477-4ddc-b132-e50e833d7e73" />
 
-[▶ E-Stop 원본 영상 보기 (YouTube)](https://youtu.be/wWkQ-iPONAk)
+[▶ E-Stop 원본 영상 보기 (YouTube)](https://youtu.be/wmteknC8YiA?si=Xb3dmzllWdR1qAxc)
 
 실물 E2E Harness의 RUN 상태에서 E-Stop을 누르면 Pump / Heater와 RUN 표시가 꺼지고 ERROR RED와 Buzzer가 작동합니다.
+
+### Full Process Sequence
+
+[▶ 전체 30초 공정 시퀀스 영상 보기 (YouTube)](https://youtu.be/wmteknC8YiA?si=Xb3dmzllWdR1qAxc)
+
+READY qualification 이후 START부터 Pump / Heater Sequence, RUN 진입, 약 30초 후 자동 종료까지 전체 공정 흐름을 확인한 영상입니다.
 
 ## Key Features
 
